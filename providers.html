@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes 架構解說 · Providers</title>
+<style>
+/* ============================================================
+   SHARED DESIGN SYSTEM  (carried from index.html verbatim)
+   ============================================================ */
+:root{
+  --bg:        #f7f8fa;
+  --bg-card:   #ffffff;
+  --bg-sunken: #f0f2f5;
+  --ink:       #1c2330;
+  --ink-soft:  #4a5468;
+  --ink-faint: #8b94a6;
+  --line:      #e2e6ec;
+  --line-soft: #eceff3;
+  --accent:    #4554d6;       /* indigo accent */
+  --accent-ink:#3340b8;
+  --accent-bg: #eef0fd;
+  --accent-bg2:#e4e7fb;
+  --warn-bg:   #fff8ec;
+  --warn-line: #f0dcb0;
+  --warn-ink:  #8a6418;
+  --ok:        #2f9e6f;
+  /* cluster accent tints (informal map) */
+  --c-platform:#2f7fd1; --c-platform-bg:#eaf3fc;
+  --c-core:    #6048c4; --c-core-bg:#efebfb;
+  --c-tools:   #1f9e88; --c-tools-bg:#e6f5f1;
+  --c-provider:#c4682f; --c-provider-bg:#fbf0e7;
+  --c-persist: #b0407a; --c-persist-bg:#fbe9f2;
+  --c-learn:   #6a8f1f; --c-learn-bg:#f1f6e4;
+  --radius:    10px;
+  --radius-sm: 6px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+          "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif;
+  --shadow: 0 1px 2px rgba(20,28,46,.04), 0 2px 8px rgba(20,28,46,.05);
+  --shadow-lift: 0 4px 16px rgba(20,28,46,.10);
+  --maxw: 1180px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); line-height:1.7;
+  font-size:16px; -webkit-font-smoothing:antialiased;
+}
+code, .mono{font-family:var(--mono); font-size:.86em}
+a{color:var(--accent-ink); text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{line-height:1.3; font-weight:680}
+h2{font-size:1.4rem; margin:0 0 .2em}
+h3{font-size:1.06rem; margin:0 0 .3em}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+/* ---- file:line reference chip + repo link (shared) ---- */
+.ref{
+  font-family:var(--mono); font-size:.8em;
+  background:var(--bg-sunken); color:var(--ink-soft);
+  border:1px solid var(--line); border-radius:5px;
+  padding:.05em .42em; white-space:nowrap; display:inline-block;
+}
+.ref b{color:var(--accent-ink); font-weight:600}
+a.ref{cursor:pointer; transition:background .12s, border-color .12s}
+a.ref:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+a.ref::after{content:" \2197"; font-size:.85em; color:var(--ink-faint)}
+a.ref:hover::after{color:var(--accent-ink)}
+
+/* ---- persistent top nav (shared) ---- */
+.topnav{
+  position:sticky; top:0; z-index:80;
+  background:rgba(247,248,250,.88); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topnav .wrap{display:flex; align-items:center; gap:6px; height:56px; flex-wrap:wrap}
+.brand{font-weight:720; letter-spacing:.2px; margin-right:10px; white-space:nowrap}
+.brand small{color:var(--ink-faint); font-weight:500; font-size:.7rem; margin-left:6px}
+.navlinks{display:flex; gap:2px; flex-wrap:wrap}
+.navlinks a{
+  color:var(--ink-soft); font-size:.85rem; padding:5px 11px;
+  border-radius:7px; white-space:nowrap;
+}
+.navlinks a:hover{background:var(--bg-sunken); text-decoration:none}
+.navlinks a.active{background:var(--accent-bg); color:var(--accent-ink); font-weight:600}
+
+.section{margin:40px 0}
+/* full-bleed: break a block out of the readable column to span the viewport
+   width. used by the diagram section so the wide whiteboard fits with little
+   or no horizontal scroll. prose sections keep the ~1180px column. */
+.fullbleed{
+  width:96vw;
+  margin-left:calc(50% - 48vw);
+  margin-right:calc(50% - 48vw);
+}
+.fullbleed .bleed-inner{max-width:none; padding:0 24px}
+.eyebrow{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 6px;
+}
+.lead{color:var(--ink-soft); max-width:76ch}
+
+/* ---- breadcrumb (gateway page) ---- */
+.crumb{
+  font-size:.84rem; color:var(--ink-faint); margin:0 0 4px;
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+}
+.crumb a{color:var(--ink-soft); font-weight:600}
+.crumb .sep{color:var(--ink-faint)}
+.crumb .here{color:var(--accent-ink); font-weight:700}
+
+/* ---- snapshot stamp (shared) ---- */
+.stamp{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:.78rem;
+  background:var(--bg-card); border:1px solid var(--line);
+  border-radius:99px; padding:5px 14px; color:var(--ink-soft);
+  box-shadow:var(--shadow);
+}
+.stamp .dot{width:7px; height:7px; border-radius:50%; background:var(--ok)}
+.stamp b{color:var(--ink); font-weight:600}
+
+/* ---- footer (shared) ---- */
+footer{
+  border-top:1px solid var(--line); margin-top:60px;
+  padding:26px 0 50px; color:var(--ink-faint); font-size:.8rem;
+}
+footer .wrap{display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; align-items:center}
+footer .mono{font-family:var(--mono)}
+
+/* hero */
+.hero{padding:30px 0 8px}
+.hero h1{font-size:2.05rem; margin:.1em 0 .35em; letter-spacing:-.01em}
+.hero .sub{color:var(--ink-soft); font-size:1.04rem; max-width:74ch; margin:0 0 18px}
+.snapshot-line{color:var(--ink-faint); font-size:.84rem; margin-top:12px; max-width:72ch}
+
+/* ============================================================
+   CONCEPTS SECTION — ubiquitous language glossary
+   ============================================================ */
+.concepts{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  padding:26px 28px 30px;
+}
+.concepts .intro{color:var(--ink-soft); max-width:78ch; margin:0 0 4px}
+.concept-groups{
+  display:grid; grid-template-columns:repeat(2,1fr); gap:22px 30px; margin-top:22px;
+}
+@media (max-width:760px){ .concept-groups{grid-template-columns:1fr} }
+.cgroup h3{
+  font-size:.96rem; margin:0 0 10px; display:flex; align-items:center; gap:8px;
+}
+.cgroup h3 .gdot{width:10px; height:10px; border-radius:3px; flex:0 0 auto}
+.glist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px}
+.glist li{padding-left:2px}
+.gterm{font-weight:680; color:var(--ink); font-size:.92rem}
+.gterm .en{font-family:var(--mono); font-size:.78rem; font-weight:600; color:var(--accent-ink); margin-left:5px}
+.gdef{color:var(--ink-soft); font-size:.86rem; line-height:1.55; margin-top:2px}
+.gdef .ref{margin-left:4px}
+.cgroup.g-recv h3 .gdot{background:var(--c-platform)}
+.cgroup.g-drive h3 .gdot{background:var(--c-core)}
+.cgroup.g-send h3 .gdot{background:var(--c-persist)}
+
+/* ============================================================
+   VIEW TABS
+   ============================================================ */
+.tabs{display:flex; gap:6px; margin:6px 0 6px; flex-wrap:wrap; align-items:center}
+.tab{
+  font-family:var(--sans); font-size:.9rem; font-weight:600;
+  color:var(--ink-soft); background:var(--bg-card);
+  border:1px solid var(--line); border-radius:9px;
+  padding:8px 16px; cursor:pointer; transition:all .14s;
+}
+.tab:hover{background:var(--bg-sunken); color:var(--ink)}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+.tab .tnote{font-weight:500; font-size:.78rem; opacity:.8; margin-left:6px}
+.tab.active .tnote{opacity:.9}
+/* quiet sub-label: the cards in the diagram are clickable */
+.clickhint{
+  color:var(--ink-faint); font-size:.8rem; font-weight:500;
+  margin-left:4px; display:inline-flex; align-items:center; gap:5px;
+}
+.clickhint::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--accent); opacity:.55; flex:0 0 auto;
+}
+.view{display:none}
+.view.active{display:block}
+.viewhint{color:var(--ink-faint); font-size:.85rem; margin:4px 0 14px}
+.viewhint b{color:var(--ink-soft)}
+
+/* ============================================================
+   VIEW 1 — informal class diagram (entity map)
+   ============================================================ */
+.diagram-shell{position:relative}
+.canvas{
+  position:relative; width:100%;
+  border:1px solid var(--line); border-radius:14px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(120,130,150,.13) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--bg-card);
+  box-shadow:var(--shadow);
+  /* roomy whiteboard: the canvas itself scrolls in both directions, page stays put */
+  overflow:auto; -webkit-overflow-scrolling:touch;
+  max-height:80vh;
+}
+/* fixed design coordinate space — big whiteboard, no shrink-to-fit */
+.canvas-inner{position:relative; width:1500px; height:880px; margin:0}
+.svg-edges{position:absolute; inset:0; width:1500px; height:880px; pointer-events:none; z-index:1}
+/* edges DE-EMPHASIZED by default */
+.edge-path{fill:none; stroke:#d2d8e2; stroke-width:1.2; transition:stroke .15s, stroke-width .15s, opacity .15s}
+.edge-path.hot{stroke:var(--accent); stroke-width:2.4; opacity:1}
+.edge-path.dim{opacity:.32}
+.edge-label{
+  font-family:var(--mono); font-size:11px; fill:var(--ink-faint);
+  transition:fill .15s, opacity .15s; opacity:0;
+}
+.edge-label.hot{fill:var(--accent-ink); opacity:1}
+.edge-label.dim{opacity:0}
+.edge-label-bg{fill:var(--bg-card); opacity:0; transition:opacity .15s}
+.edge-label-bg.hot{opacity:.94}
+/* arrow markers dim by default, lit on .hot via JS marker swap */
+
+/* class boxes — compact static tiles, whole card opens the drawer */
+.entity{
+  position:absolute; z-index:2;
+  width:222px; background:var(--bg-card);
+  border:1.5px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow);
+  transition:transform .12s, box-shadow .14s, border-color .14s;
+  overflow:hidden; cursor:pointer; user-select:none;
+}
+.entity:hover{transform:translateY(-2px); box-shadow:var(--shadow-lift)}
+.entity:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.entity.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.entity.lit{box-shadow:0 0 0 2px var(--accent-bg2), var(--shadow-lift)}
+.entity .ehead{
+  padding:10px 13px 4px; display:flex; align-items:center; gap:7px;
+}
+.entity .ename{font-weight:700; font-size:.95rem; letter-spacing:.1px}
+.entity .erole{
+  padding:0 13px 11px; font-size:.78rem; color:var(--ink-soft);
+  line-height:1.45;
+}
+.entity .etag{
+  position:absolute; top:0; left:0; width:5px; height:100%;
+}
+/* cluster colourings */
+.entity.platform{border-color:#cfe1f4}
+.entity.platform .etag{background:var(--c-platform)}
+.entity.platform .ename{color:var(--c-platform)}
+.entity.core{border-color:#dcd5f4}
+.entity.core .etag{background:var(--c-core)}
+.entity.core .ename{color:var(--c-core)}
+.entity.tools{border-color:#cdeae3}
+.entity.tools .etag{background:var(--c-tools)}
+.entity.tools .ename{color:var(--c-tools)}
+.entity.provider{border-color:#f0ddca}
+.entity.provider .etag{background:var(--c-provider)}
+.entity.provider .ename{color:var(--c-provider)}
+.entity.persist{border-color:#f4d3e3}
+.entity.persist .etag{background:var(--c-persist)}
+.entity.persist .ename{color:var(--c-persist)}
+.entity.learn{border-color:#e3edca}
+.entity.learn .etag{background:var(--c-learn)}
+.entity.learn .ename{color:var(--c-learn)}
+/* boundary entity (the agent, owned by the Agent detail page) — dashed edge */
+.entity.boundary{border-style:dashed; opacity:.96}
+.entity.boundary .erole{color:var(--ink-faint)}
+
+/* cluster labels (informal hand-drawn group hint) */
+.cluster-label{
+  position:absolute; z-index:1; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:600;
+  border:1px dashed var(--line); border-radius:99px;
+  padding:2px 11px; background:rgba(255,255,255,.6);
+}
+
+/* legend + toolbar */
+.diagram-toolbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:14px 0 4px}
+.minibtn{
+  font-size:.78rem; font-weight:600; color:var(--ink-soft);
+  background:var(--bg-card); border:1px solid var(--line); border-radius:8px;
+  padding:5px 12px; cursor:pointer; transition:all .12s;
+}
+.minibtn:hover{background:var(--bg-sunken); color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:14px; font-size:.8rem; color:var(--ink-soft)}
+.legend .li{display:inline-flex; align-items:center; gap:6px}
+.legend .swatch{width:24px; height:0; border-top-width:2px; border-top-style:solid}
+.legend .sw-owns{border-color:var(--c-core)}
+.legend .sw-calls{border-color:#9aa4b6}
+.legend .sw-rw{border-color:var(--c-persist); border-top-style:dashed}
+.legend .sw-isa{border-color:#9aa4b6; border-top-style:dotted}
+.legend .dotc{width:11px;height:11px;border-radius:3px}
+
+/* ============================================================
+   VIEW 2 — informal sequence diagram
+   ============================================================ */
+.seq-shell{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  overflow-x:auto;
+}
+.seq-inner{position:relative; width:1040px; min-width:1040px; height:560px; margin:0 auto}
+.seq-svg{position:absolute; inset:0; width:1040px; height:560px}
+.seq-lifeline{stroke:#c4ccd9; stroke-width:1.4; stroke-dasharray:4 4}
+.seq-arrow{stroke:#7d8aa0; stroke-width:1.6; fill:none}
+.seq-arrow.ret{stroke:#b0407a; stroke-dasharray:5 4}
+.seq-arrow.self{stroke:#6a8f1f}
+.seq-msglabel{font-family:var(--sans); font-size:12px; fill:var(--ink)}
+.seq-msgnum{font-family:var(--mono); font-size:11px; fill:var(--accent); font-weight:700}
+.seq-actorbox{
+  position:absolute; transform:translateX(-50%);
+  width:150px; text-align:center; cursor:pointer; z-index:3;
+  border-radius:10px; padding:8px 5px; box-shadow:var(--shadow);
+  border:1.5px solid var(--line); background:var(--bg-card);
+  transition:transform .12s, box-shadow .14s;
+}
+.seq-actorbox:hover{transform:translateX(-50%) translateY(-2px); box-shadow:var(--shadow-lift)}
+.seq-actorbox.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.seq-actorbox .an{font-weight:700; font-size:.82rem}
+.seq-actorbox .ar{font-size:.66rem; color:var(--ink-faint); font-family:var(--mono)}
+.seq-step{
+  position:absolute; z-index:3; cursor:pointer;
+  border-radius:6px; transition:background .12s;
+}
+.seq-step:hover{background:rgba(69,84,214,.08)}
+.seq-step.sel{background:rgba(69,84,214,.13); outline:1.5px solid var(--accent-bg2)}
+
+/* ============================================================
+   DETAIL PANEL (shared by both views) — slide-in side panel
+   ============================================================ */
+.panel-scrim{
+  position:fixed; inset:0; background:rgba(20,28,46,.34);
+  z-index:90; opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.panel-scrim.open{opacity:1; pointer-events:auto}
+.panel{
+  position:fixed; top:0; right:0; height:100%; width:min(540px,94vw);
+  background:var(--bg-card); z-index:95; box-shadow:-8px 0 30px rgba(20,28,46,.16);
+  transform:translateX(100%); transition:transform .24s cubic-bezier(.4,.0,.2,1);
+  display:flex; flex-direction:column;
+}
+.panel.open{transform:translateX(0)}
+.panel-head{
+  padding:18px 22px 14px; border-bottom:1px solid var(--line);
+  display:flex; align-items:flex-start; gap:12px;
+}
+.panel-head .pmark{
+  flex:0 0 auto; width:10px; height:38px; border-radius:4px; margin-top:2px;
+  background:var(--accent);
+}
+.panel-head .ph-t{flex:1 1 auto; min-width:0}
+.panel-head .ph-name{font-size:1.18rem; font-weight:720; letter-spacing:.1px}
+.panel-head .ph-stereo{font-family:var(--mono); font-size:.72rem; color:var(--ink-faint); margin-top:2px}
+.panel-close{
+  flex:0 0 auto; cursor:pointer; border:1px solid var(--line);
+  background:var(--bg-sunken); border-radius:8px; width:32px; height:32px;
+  font-size:1.1rem; color:var(--ink-soft); line-height:1;
+}
+.panel-close:hover{background:var(--line-soft); color:var(--ink)}
+.panel-body{padding:18px 22px 40px; overflow-y:auto; flex:1 1 auto}
+.panel-body h4{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); margin:20px 0 7px; font-weight:600;
+}
+.panel-body h4:first-child{margin-top:2px}
+.panel-body p{margin:.55em 0; color:var(--ink-soft); font-size:.92rem}
+.panel-body .role-line{font-size:1rem; color:var(--ink); margin:2px 0 4px}
+.panel-body ul.keymethods{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:7px}
+.panel-body ul.keymethods li{font-size:.86rem; color:var(--ink-soft)}
+.panel-body ul.rels{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:6px}
+.panel-body ul.rels li{font-size:.88rem; color:var(--ink-soft); padding-left:18px; position:relative}
+.panel-body ul.rels li::before{
+  content:""; position:absolute; left:0; top:.62em; width:9px; height:9px;
+  border-radius:2px; background:var(--ink-faint);
+}
+.panel-body ul.rels li.r-owns::before{background:var(--c-core)}
+.panel-body ul.rels li.r-calls::before{background:#9aa4b6}
+.panel-body ul.rels li.r-rw::before{background:var(--c-persist)}
+.panel-body ul.rels li.r-isa::before{background:var(--c-platform)}
+.panel-body .relverb{font-weight:700; color:var(--ink)}
+.gotcha{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:10px; padding:13px 16px; margin:10px 0 4px;
+}
+.gotcha p{color:#5f4d22; margin:.3em 0; font-size:.88rem}
+.panel-detaillink{
+  display:inline-flex; align-items:center; gap:6px; margin-top:6px;
+  font-size:.86rem; font-weight:600; color:var(--accent-ink);
+  background:var(--accent-bg); padding:6px 14px; border-radius:8px;
+}
+.panel-detaillink:hover{background:var(--accent-bg2); text-decoration:none}
+.panel-detaillink.none{background:var(--bg-sunken); color:var(--ink-faint); font-weight:500; cursor:default}
+
+/* honest note callout */
+.note{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:var(--radius); padding:18px 22px; margin:18px 0;
+}
+.note .eyebrow{color:var(--warn-ink)}
+.note p{margin:.4em 0; color:#5f4d22}
+
+/* related cross-links */
+.related{
+  border:1px solid var(--line); border-radius:14px; background:var(--bg-card);
+  box-shadow:var(--shadow); padding:22px 24px;
+}
+.related h3{margin:0 0 4px}
+.relgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px}
+@media (max-width:680px){ .relgrid{grid-template-columns:1fr} }
+.relcard{
+  display:block; border:1px solid var(--line); border-radius:10px;
+  padding:13px 15px; background:var(--bg-sunken); transition:all .12s;
+}
+.relcard:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+.relcard .rk{font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+.relcard .rt{font-weight:680; color:var(--ink); margin-top:2px}
+.relcard .rd{font-size:.82rem; color:var(--ink-soft); margin-top:3px}
+
+/* responsive */
+.scaler{overflow-x:auto; -webkit-overflow-scrolling:touch}
+@media (max-width:680px){
+  .hero h1{font-size:1.6rem}
+  .topnav .wrap{height:auto; padding-top:8px; padding-bottom:8px}
+  .panel{width:100vw}
+  .concepts{padding:20px 18px 22px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ PERSISTENT NAV (shared, Gateway active) ============ -->
+<nav class="topnav">
+  <div class="wrap">
+    <span class="brand">Hermes 架構解說<small>v0.17.0 · Providers</small></span>
+    <div class="navlinks">
+      <a href="index.html">總覽</a>
+      <a href="gateway.html">Gateway</a>
+      <a href="agent-learning.html">Agent 與學習</a>
+      <a href="tools-mcp.html">Tools 與 MCP</a>
+      <a href="providers.html" class="active">Providers</a>
+      <a href="state.html">State</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <p class="crumb">
+      <a href="index.html">總覽</a>
+      <span class="sep">/</span>
+      <span class="here">Providers 子系統</span>
+      <span class="sep">·</span>
+      <span>你在這：放大看「agent 要一個模型，怎麼挑出後端、帶著後備送請求」這一段</span>
+    </p>
+    <p class="eyebrow">多後端接線層 · 把「要一個模型」變成「打哪一家的 API」</p>
+    <h1>Providers：agent 要一個模型，怎麼挑出後端、帶著後備把請求送出去</h1>
+    <p class="sub">
+      Hermes 不綁死單一模型供應商。agent 要跑一輪時只說「我要一個模型」，剩下的交給這層：先解析出該用哪一家供應商（原生支援 Anthropic 與約 28 家），從外掛目錄取出那家的 profile，必要時查線上模型目錄補資料，再帶著一池憑證（用完一把自動換下一把）把請求送到那家的後端。總覽頁只用一張小卡帶過它，這頁把它拆開看裡面的實體與關係。
+    </p>
+    <span class="stamp">
+      <span class="dot"></span>
+      <span>快照 <b>Hermes v0.17.0</b> · commit <b>2a10b83</b> · <b>2026-06-22</b></span>
+    </span>
+    <p class="snapshot-line">
+      本頁所有 <span class="mono">file:line</span> 對應上面這個 commit，點開會連到 GitHub 同一個 commit 的原始碼。Hermes 發版很快，日後行號可能位移，請以類別、函式名稱為主，行號為輔。
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ CONCEPTS FIRST ============ -->
+  <section class="section" id="concepts">
+    <p class="eyebrow">先懂這些詞 · 只列 providers 自己的概念</p>
+    <h2 style="margin-bottom:8px">本頁詞彙</h2>
+    <div class="concepts">
+      <p class="intro">
+        下面只列 providers 這一段會用到的詞（總覽頁的共通詞不重複）。中文名後面括號是原始碼裡用的英文，每個定義都對著原始碼確認過，點 <span class="mono">file:line</span> 可以跳到 GitHub 看出處。
+      </p>
+      <div class="concept-groups" id="conceptGroups"><!-- injected by JS --></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ TABS (full-bleed whiteboard) ============ -->
+<section class="section fullbleed" id="views">
+  <div class="bleed-inner">
+    <div class="wrap">
+      <h2 style="margin-bottom:6px">Providers 子系統的實體與關係</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-view="v1" role="tab" aria-selected="true">
+          視角一 · 實體圖<span class="tnote">class diagram</span>
+        </button>
+        <button class="tab" data-view="v2" role="tab" aria-selected="false">
+          視角二 · 一次模型請求怎麼挑後端、怎麼後備<span class="tnote">sequence diagram</span>
+        </button>
+        <span class="clickhint">點任一張卡片，右側看完整說明</span>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 1 ===================== -->
+    <div class="view active" id="view-v1" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">這些方塊是 providers 子系統裡真實存在的「東西」。<b>AIAgent</b> 畫成左側的邊界（它的內部留在「Agent 與學習」頁），它只說「我要一個模型」；中央是解析與後端接線層；右側是供應商目錄與線上模型目錄。每個方塊只標名字和一句目的，<b>點方塊</b>就從右側看完整說明（角色、關鍵方法、關係、限制）。<b>把游標移到方塊上</b>，只會點亮它牽到的關係線，其餘變淡。畫板比視窗大時，可在框內捲動。</p>
+
+      <div class="diagram-toolbar">
+        <div class="legend">
+          <span class="li"><span class="swatch sw-owns"></span>持有（owns）</span>
+          <span class="li"><span class="swatch sw-calls"></span>呼叫（calls）</span>
+          <span class="li"><span class="swatch sw-rw"></span>讀寫（reads-writes）</span>
+          <span class="li"><span class="swatch sw-isa"></span>繼承（is-a）</span>
+          <span class="li"><span class="dotc" style="background:var(--c-core)"></span>解析與接線核心</span>
+          <span class="li"><span class="dotc" style="background:var(--c-provider)"></span>供應商目錄</span>
+          <span class="li"><span class="dotc" style="background:var(--c-persist)"></span>憑證池（後備/輪替）</span>
+        </div>
+      </div>
+      </div><!-- /.wrap (view-v1 text column) -->
+
+      <div class="diagram-shell scaler">
+        <div class="canvas">
+          <div class="canvas-inner" id="canvas1">
+            <svg class="svg-edges" viewBox="0 0 1500 880" preserveAspectRatio="none" id="edges1">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#d2d8e2" stroke-width="1.4"/>
+                </marker>
+                <marker id="arrow-hot" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#4554d6" stroke-width="1.6"/>
+                </marker>
+                <marker id="tri-isa" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#d2d8e2" stroke-width="1.2"/>
+                </marker>
+                <marker id="tri-isa-hot" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#4554d6" stroke-width="1.4"/>
+                </marker>
+              </defs>
+            </svg>
+
+            <!-- cluster labels -->
+            <div class="cluster-label" style="left:40px; top:24px">agent 邊界（細節在 Agent 頁）</div>
+            <div class="cluster-label" style="left:560px; top:24px">解析與接線核心</div>
+            <div class="cluster-label" style="left:1130px; top:24px">供應商目錄</div>
+            <div class="cluster-label" style="left:560px; top:610px">憑證池（後備/輪替）</div>
+
+            <!-- ENTITY BOXES injected by JS (collapsed by default) -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 2 ===================== -->
+    <div class="view" id="view-v2" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">同一批實體當生命線（lifeline），從左到右照請求流向排。箭頭是時間軸上的呼叫，由上往下發生。點上方的方塊、或點任一個帶編號的訊息步驟，右側開細節。虛線回程是結果往回送。這張是次要視角，主要看的是上面的實體圖。</p>
+
+      <div class="legend" style="margin-bottom:14px">
+        <span class="li"><span class="swatch" style="border-top:2px solid #7d8aa0"></span>呼叫（往前）</span>
+        <span class="li"><span class="swatch sw-rw" style="border-color:#b0407a"></span>回傳 / 回覆（往回）</span>
+        <span class="li"><span class="swatch" style="border-top:2px solid #6a8f1f"></span>自身內部動作</span>
+      </div>
+      </div><!-- /.wrap (view-v2 text column) -->
+
+      <div class="seq-shell scaler">
+        <div class="seq-inner" id="seq1">
+          <svg class="seq-svg" viewBox="0 0 1040 560" id="seqsvg">
+            <defs>
+              <marker id="seqarrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#7d8aa0" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-ret" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#b0407a" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-self" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#6a8f1f" stroke-width="1.3"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div><!-- /.bleed-inner -->
+</section>
+
+<main class="wrap">
+
+  <!-- ============ HONEST NOTE ============ -->
+  <section class="section" id="caveat">
+    <div class="note">
+      <p class="eyebrow">誠實提醒</p>
+      <p>provider 解析<b>不是查一張表就好</b>。<a class="ref" data-ref="hermes_cli/runtime_provider.py:1384"><b>resolve_runtime_provider</b></a> 是一個約 1.8k 行檔裡的真正 resolver：它要分辨 Azure Anthropic 捷徑、自訂供應商（<code>custom:&lt;name&gt;</code>）、明確指定的 base_url、本機伺服器（ollama / vllm…）、再到憑證池與環境變數的層層後備。圖上只畫主線：agent 要模型 → 解析挑出供應商 → 取 profile → 帶憑證送出。那些邊角分支都收在這個檔裡。</p>
+      <p>Hermes <b>原生支援 Anthropic 與約 28 家供應商</b>：<a class="ref" data-ref="plugins/model-providers"><b>plugins/model-providers/</b></a> 底下目前正好 28 個外掛資料夾（anthropic、openai-codex、openrouter、gemini、deepseek、xai…），每個是一個自包含的 <code>ProviderProfile</code> 外掛。發現是惰性的：第一次呼叫 <a class="ref" data-ref="providers/__init__.py:65"><b>get_provider_profile</b></a> 才掃描並匯入。使用者還能在 <code>$HERMES_HOME/plugins/model-providers/</code> 放同名外掛覆蓋內建的（後寫者贏）。「約 28 家」指的是內建外掛數，不含線上模型目錄涵蓋的 100+ 家。</p>
+      <p><b>device-code OAuth 是 headless 部署的關鍵</b>。沒有瀏覽器的環境（伺服器、容器）要拿 OpenAI Codex / Nous 這類 OAuth 授權，靠的是裝置碼流程：<a class="ref" data-ref="hermes_cli/auth.py:4533"><b>_request_device_code</b></a> 先換一組 <code>user_code</code> 跟 <code>verification_uri</code>，使用者在別的裝置上開那個網址授權，程式這邊用 <a class="ref" data-ref="hermes_cli/auth.py:4560"><b>_poll_for_token</b></a> 輪詢拿 token。<code>openai-codex</code> 的登入入口是 <a class="ref" data-ref="hermes_cli/auth.py:6666"><b>_login_openai_codex</b></a>，token 落在 <code>~/.hermes/auth.json</code>，之後進憑證池跟著輪替。</p>
+      <p>所有 <span class="mono">file:line</span> 對應 commit <b>2a10b83</b>（2026-06-22）。發版很快，日後行號很可能位移。</p>
+    </div>
+  </section>
+
+  <!-- ============ RELATED CROSS-LINKS ============ -->
+  <section class="section" id="related">
+    <div class="related">
+      <h3>相關</h3>
+      <p class="lead">這頁停在 agent 把「我要一個模型」交給解析層的邊界。回上一層、或往旁邊看：</p>
+      <div class="relgrid">
+        <a class="relcard" href="index.html">
+          <div class="rk">回到上一層</div>
+          <div class="rt">總覽 →</div>
+          <div class="rd">六群實體的全景圖，providers 只是其中一塊。</div>
+        </a>
+        <a class="relcard" href="agent-learning.html">
+          <div class="rk">誰用 provider</div>
+          <div class="rt">Agent 與學習 →</div>
+          <div class="rd">AIAgent 內部：對話迴圈跑一輪時，就是在這裡向 provider 層要模型。</div>
+        </a>
+        <a class="relcard" href="gateway.html">
+          <div class="rk">更前面一段</div>
+          <div class="rt">Gateway →</div>
+          <div class="rd">訊息怎麼進來、怎麼找或建 agent、再驅動它跑這一輪。</div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ DETAIL PANEL ============ -->
+<div class="panel-scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-hidden="true">
+  <div class="panel-head">
+    <div class="pmark" id="pmark"></div>
+    <div class="ph-t">
+      <div class="ph-name" id="pname">·</div>
+      <div class="ph-stereo" id="pstereo"></div>
+    </div>
+    <button class="panel-close" id="pclose" aria-label="關閉">×</button>
+  </div>
+  <div class="panel-body" id="pbody"></div>
+</aside>
+
+<!-- ============ FOOTER (shared) ============ -->
+<footer>
+  <div class="wrap">
+    <span>整理：陳展佑 Yo</span>
+    <span class="mono">Hermes v0.17.0 · commit 2a10b83 · 2026-06-22</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   REPO LINK HELPER
+   ONE helper. Every file:line in the page goes through it.
+   ============================================================ */
+var REPO_PREFIX='https://github.com/NousResearch/hermes-agent/blob/2a10b8384aa2ef0418063ca0829e491c5916fba4/';
+/* split on LAST ':' into file + line; build <prefix><file>#L<line> */
+function refURL(ref){
+  ref=String(ref).trim();
+  var i=ref.lastIndexOf(':');
+  var file=ref, line='';
+  if(i>0 && /^\d+$/.test(ref.slice(i+1))){ file=ref.slice(0,i); line=ref.slice(i+1); }
+  return REPO_PREFIX+file+(line?('#L'+line):'');
+}
+/* render a file:line ref as a clickable repo-linked chip */
+function refChip(ref){
+  if(!ref || ref==='—') return '';
+  return '<a class="ref" href="'+refURL(ref)+'" target="_blank" rel="noopener"><b>'+ref+'</b></a>';
+}
+/* hydrate any <a class="ref" data-ref="..."> placeholders in static HTML */
+function hydrateRefs(root){
+  (root||document).querySelectorAll('a.ref[data-ref]').forEach(function(a){
+    a.href=refURL(a.getAttribute('data-ref'));
+    a.target='_blank'; a.rel='noopener';
+  });
+}
+
+/* ============================================================
+   CONCEPTS DATA — gateway-specific ubiquitous language
+   each term: {zh, en, def, ref?}  — ref rendered via helper
+   ============================================================ */
+var CONCEPT_GROUPS=[
+  {key:'g-recv', title:'供應商與目錄', items:[
+    {zh:'供應商', en:'provider', def:'一家能跑推論的後端（Anthropic、OpenAI、OpenRouter、DeepSeek…）。Hermes 不綁死一家，把每家的差異收在一個 ProviderProfile 裡。', ref:'providers/base.py:39'},
+    {zh:'供應商外掛目錄', en:'model-providers plugins', def:'plugins/model-providers/ 底下每個資料夾是一個自包含的供應商外掛（__init__.py 註冊一個 profile、plugin.yaml 是清單）。目前正好 28 個，是「原生支援約 28 家」的出處。', ref:'plugins/model-providers'},
+    {zh:'模型目錄', en:'model catalog', def:'models.dev 的線上模型資料庫（4000+ 模型、109+ 家），補上每個模型的脈絡長度、上限輸出、費率、能力（推論/工具/視覺）。離線時用內建快照，背景每小時刷新。', ref:'agent/models_dev.py:240'},
+  ]},
+  {key:'g-drive', title:'解析與接線', items:[
+    {zh:'provider 解析', en:'resolution', def:'把「我要一個模型」算成「實際打哪一家、用哪把 key、哪個 api_mode」的整段邏輯。不是查一張表：要分辨 Azure、自訂供應商、明確 base_url、本機伺服器、再到憑證池與環境變數的層層後備。', ref:'hermes_cli/runtime_provider.py:1384'},
+    {zh:'供應商 profile', en:'ProviderProfile', def:'一個宣告式資料類別：把某家供應商的身分、認證、端點、請求時的小怪癖（溫度、額外欄位、視覺支援…）集中宣告，讓傳輸層讀它而不是收一堆布林旗標。', ref:'providers/base.py:39'},
+    {zh:'自訂供應商', en:'custom provider', def:'使用者在設定檔自己宣告的供應商（providers: / 舊的 custom_providers:），用 custom:&lt;name&gt; 指定。任何 OpenAI 相容的端點都能這樣接進來，解析時走專門的自訂路徑。', ref:'hermes_cli/runtime_provider.py:800'},
+  ]},
+  {key:'g-send', title:'憑證與授權', items:[
+    {zh:'後備 / 輪替', en:'fallback / rotation', def:'同一家供應商可放多把憑證成一池。一把被限流或用完（exhausted），就自動換下一把繼續跑；預設輪詢策略（round-robin）。這是長時間連跑不中斷的關鍵。', ref:'agent/credential_pool.py:1383'},
+    {zh:'device-code OAuth', en:'device-code OAuth', def:'沒有瀏覽器的環境（伺服器、容器）取得 OAuth 授權的流程：先換一組 user_code 跟一個網址，使用者在別的裝置開網址授權，程式這邊輪詢拿 token。headless 部署 OpenAI Codex / Nous 授權靠它。', ref:'hermes_cli/auth.py:4533'},
+  ]},
+];
+
+function buildConcepts(){
+  var host=document.getElementById('conceptGroups');
+  var html='';
+  CONCEPT_GROUPS.forEach(function(g){
+    html+='<div class="cgroup '+g.key+'"><h3><span class="gdot"></span>'+g.title+'</h3><ul class="glist">';
+    g.items.forEach(function(it){
+      html+='<li><div class="gterm">'+it.zh+'<span class="en">'+it.en+'</span></div>'+
+            '<div class="gdef">'+it.def+(it.ref?(' '+refChip(it.ref)):'')+'</div></li>';
+    });
+    html+='</ul></div>';
+  });
+  host.innerHTML=html;
+}
+
+/* ============================================================
+   ENTITY DATA — gateway cluster, with real internals
+   purpose = collapsed one-liner; methods carry file:line refs
+   ============================================================ */
+var CLUSTER_COLOR = {
+  platform:'#2f7fd1', core:'#6048c4', tools:'#1f9e88',
+  provider:'#c4682f', persist:'#b0407a', learn:'#6a8f1f'
+};
+
+var ENTITIES = {
+  'aiagent':{
+    name:'AIAgent（邊界）', cluster:'core', stereo:'agent instance（邊界）· run_agent.py:333',
+    purpose:'要一個模型的那一方',
+    methods:[
+      ['class AIAgent','run_agent.py:333'],
+      ['profile = get_provider_profile(provider)','run_agent.py:4477'],
+      ['（內部：對話迴圈、記憶、工具 → 見 Agent 頁）','run_agent.py:333'],
+    ],
+    role:'這頁的邊界。從 providers 子系統的角度看，agent 就是「要一個模型來跑這一輪」的那一方：它說出 provider 與 model，剩下的解析與接線交給這層。',
+    summary:'AIAgent 是 gateway 驅動的 agent 本體，內部（對話迴圈、記憶、工具）屬於「Agent 與學習」頁。本頁只畫到它與 provider 層的交接面：跑一輪要送請求前，它會用自己的 provider 名字去拿 ProviderProfile（run_agent.py:4477、傳輸層 agent/chat_completion_helpers.py:730），由 profile 決定怎麼組這次的 API 請求；憑證與 base_url 則來自 resolve_runtime_provider 的解析結果。它不自己決定「打哪一家」，只負責「要一個模型」。',
+    rels:[
+      ['calls','呼叫','<b>呼叫</b> resolve_runtime_provider 解析出該用哪家供應商、哪把憑證。'],
+      ['calls','呼叫','<b>呼叫</b> get_provider_profile 取出該供應商的 ProviderProfile 來組請求。']
+    ],
+    gotcha:'這張卡是邊界，刻意只畫到交接面。AIAgent 內部很大（run_agent.py 約 5.4k 行），那些都在 Agent 頁。在這頁追「對話迴圈怎麼跑」會找錯地方。它也不是唯一的呼叫者：輔助任務（壓縮、背景審查、策展）也各自呼叫 resolve_runtime_provider。',
+    page:'agent-learning.html'
+  },
+  'resolve':{
+    name:'resolve_runtime_provider', cluster:'core', stereo:'resolver · hermes_cli/runtime_provider.py:1384',
+    purpose:'解析「要哪家、哪把 key」',
+    methods:[
+      ['def resolve_runtime_provider(*, requested, explicit_api_key, explicit_base_url, target_model)','hermes_cli/runtime_provider.py:1384'],
+      ['_resolve_named_custom_runtime(...)（自訂供應商路徑）','hermes_cli/runtime_provider.py:800'],
+      ['_try_resolve_from_custom_pool(...)（自訂端點的憑證池）','hermes_cli/runtime_provider.py:457'],
+      ['resolve_requested_provider(requested)','hermes_cli/runtime_provider.py:438'],
+    ],
+    role:'解析的中樞，CLI、gateway、cron、輔助工具共用。把「我要一個模型」算成一個具體的 runtime dict：哪家供應商、哪把 api_key、哪個 base_url、哪個 api_mode。',
+    summary:'這是 provider 解析的真正入口，不是查一張表。它依序試：Azure Anthropic 捷徑 → 自訂供應商（custom:&lt;name&gt;，:800）→ 明確指定的 base_url / 本機伺服器（ollama、vllm、llamacpp 自動偵測）→ 憑證池 → 環境變數的層層後備，回傳一個 runtime dict。被很多地方共用（agent/account_usage.py、auxiliary_client.py、background_review.py、curator.py、gateway/run.py），所以「provider 從哪來」全在這收斂。約 1.8k 行的檔，分支多半是各家供應商與本機伺服器的邊角差異。',
+    rels:[
+      ['calls','被呼叫','被 <b>AIAgent</b> 與多個輔助任務 <b>呼叫</b>，要一份 runtime dict。'],
+      ['calls','呼叫','<b>呼叫</b> get_provider_profile 與 auth 解析函式，把供應商與憑證湊齊。'],
+      ['rw','讀','從 <b>CredentialPool</b> <b>讀</b> 出當前可用的那把憑證（含自訂端點的池）。']
+    ],
+    gotcha:'這層只負責「挑出供應商與憑證」，不負責「組 API 請求」（那是 ProviderProfile 的事），也不負責「用完換下一把」（那是 CredentialPool 的事）。三件事刻意分開。它有大量本機 / 自訂端點的信任判斷（例如不讓過期的 OpenRouter base_url 劫持本機 custom session），那些分支讓檔變長，但主線是上面那條後備鏈。',
+    page:null
+  },
+  'registry':{
+    name:'get_provider_profile', cluster:'core', stereo:'plugin registry · providers/__init__.py:65',
+    purpose:'依名字／別名找出 profile',
+    methods:[
+      ['def get_provider_profile(name)','providers/__init__.py:65'],
+      ['register_provider(profile)（外掛載入時自註冊）','providers/__init__.py:53'],
+      ['_discover_providers()（惰性掃描兩個外掛目錄）','providers/__init__.py:140'],
+      ['list_providers()（列出所有已註冊 profile）','providers/__init__.py:76'],
+    ],
+    role:'供應商外掛的註冊表查詢。給一個供應商名字或別名，回傳對應的 ProviderProfile，找不到回 None（落到通用路徑）。',
+    summary:'這是供應商目錄的入口。第一次被呼叫時做惰性發現（_discover_providers，:140）：先掃 plugins/model-providers/ 底下每個外掛、再掃 $HERMES_HOME/plugins/model-providers/ 的使用者外掛、最後相容舊的 providers/&lt;name&gt;.py 單檔。每個外掛在匯入時呼叫 register_provider 把自己的 profile 塞進註冊表，同名後寫者贏，所以使用者外掛能覆蓋內建的。查詢支援別名（例如 claude / codex 都對得到）。',
+    rels:[
+      ['calls','被呼叫','被 <b>AIAgent</b> 傳輸層與 <b>resolve_runtime_provider</b> <b>呼叫</b>，要一個 profile。'],
+      ['owns','登錄','<b>登錄</b> 並回傳 <b>ProviderProfile</b>（每個外掛一個）。']
+    ],
+    gotcha:'發現是惰性且只做一次：第一次呼叫才掃描匯入全部外掛。回 None 不是錯誤，而是「這是個沒登錄 profile 的供應商」，傳輸層會落到舊的旗標路徑（agent/chat_completion_helpers.py:767）。要新增一家供應商，丟一個外掛資料夾進去就好，不必改 auth / config / 傳輸層的程式。',
+    page:null
+  },
+  'profile':{
+    name:'ProviderProfile + 28 家外掛', cluster:'provider', stereo:'declarative profile · providers/base.py:39',
+    purpose:'一家供應商的所有怪癖（宣告式）',
+    methods:[
+      ['@dataclass class ProviderProfile','providers/base.py:39'],
+      ['plugins/model-providers/anthropic/（原生 Anthropic：x-api-key）','plugins/model-providers/anthropic/__init__.py'],
+      ['plugins/model-providers/openai-codex/（codex_responses，OAuth）','plugins/model-providers/openai-codex/__init__.py'],
+      ['build_extra_body / build_api_kwargs_extras / fetch_models（hooks）','providers/base.py:119'],
+    ],
+    role:'一家供應商在一個地方宣告完它的一切：身分、別名、認證型態、端點、視覺支援、請求時的小怪癖。傳輸層讀它，而不是收一堆布林旗標。',
+    summary:'ProviderProfile 是宣告式資料類別：name / aliases / api_mode / env_vars / base_url / auth_type / supports_vision / fixed_temperature 等欄位，加上幾個可覆寫的 hook（prepare_messages、build_extra_body、build_api_kwargs_extras、fetch_models）。簡單的供應商只是填欄位（見 anthropic：x-api-key 認證、aliases 含 claude/claude-code）；複雜的覆寫 hook（見 openrouter 的 reasoning 翻譯、gemini 的 thinking_config）。plugins/model-providers/ 底下目前正好 28 個外掛，這就是「原生支援 Anthropic 與約 28 家」的出處。profiles 只描述行為，不擁有 client 建構、憑證輪替或串流（那些在 AIAgent 與 CredentialPool）。',
+    rels:[
+      ['isa','被登錄','由 <b>get_provider_profile</b> 的註冊表 <b>登錄</b>並取出（每外掛一個）。'],
+      ['rw','讀','需要時呼叫 fetch_models / 查 <b>模型目錄</b> <b>讀</b> 該家可用模型清單。']
+    ],
+    gotcha:'profile 是宣告式的：它描述供應商行為，刻意不碰 client 建構、憑證輪替、串流（那些留在 AIAgent）。「約 28 家」指內建外掛數，不是 Hermes 能用的全部模型來源（線上目錄涵蓋 100+ 家）。fetch_models 失敗時要落回 profile 裡 fallback_models 的靜態清單。',
+    page:null
+  },
+  'catalog':{
+    name:'models.dev 模型目錄', cluster:'provider', stereo:'model catalog · agent/models_dev.py:240',
+    purpose:'每個模型的脈絡長度／能力／費率',
+    methods:[
+      ['fetch_models_dev(force_refresh=False)','agent/models_dev.py:240'],
+      ['get_model_capabilities(provider, model)','agent/models_dev.py:450'],
+      ['list_agentic_models(provider)（只列支援工具呼叫的）','agent/models_dev.py:575'],
+      ['lookup_models_dev_context(provider, model)','agent/models_dev.py:321'],
+    ],
+    role:'模型層的元資料來源：每個模型的脈絡長度、上限輸出、費率、能力（推論／工具／視覺／PDF／音訊）、知識截止、是否開源。資料來自社群維護的 models.dev（4000+ 模型、109+ 家）。',
+    summary:'models.dev 整合，是供應商／模型的主資料庫。解析順序是離線優先：內建快照 → 磁碟快取（~/.hermes/models_dev_cache.json）→ 網路抓取（models.dev/api.json）→ 背景每 60 分鐘刷新。其他模組（model_metadata.py、/model 選單、doctor）都從這裡查模型脈絡與能力，而不是各自解析原始 JSON。它跟 ProviderProfile 互補：profile 管「怎麼跟這家講話」，目錄管「這個模型有多大、會什麼、多少錢」。',
+    rels:[
+      ['rw','被讀','被 <b>ProviderProfile</b> 與模型選單 <b>讀</b>，補上模型的脈絡長度與能力。']
+    ],
+    gotcha:'它是離線優先的：沒網路也能用內建快照，所以 commit 當下的快照可能比 models.dev 最新狀態舊一點。它涵蓋的「109+ 家」是 models.dev 的廣度，跟 Hermes 內建的「約 28 家有 profile 的供應商」是兩件事：目錄管元資料、外掛管接線。',
+    page:null
+  },
+  'pool':{
+    name:'CredentialPool', cluster:'persist', stereo:'credential rotation · agent/credential_pool.py:450',
+    purpose:'一池憑證，用完自動換',
+    methods:[
+      ['class CredentialPool','agent/credential_pool.py:450'],
+      ['select()（依策略選一把，預設 round-robin）','agent/credential_pool.py:1224'],
+      ['mark_exhausted_and_rotate(*, status_code, ...)','agent/credential_pool.py:1383'],
+      ['STRATEGY_ROUND_ROBIN / load_pool(provider)','agent/credential_pool.py:98'],
+    ],
+    role:'後備／輪替的家。同一家供應商可放多把憑證成一池；select 依策略選一把，被限流或用完就 mark_exhausted_and_rotate 換下一把。',
+    summary:'這是長時間連跑不中斷的關鍵。一家供應商的多把 key（手動加的、device-code OAuth 拿到的、claude_code 同步來的…）放成一池，select(:1224) 依策略選當前那把（預設輪詢 round-robin），跳過還在冷卻（exhausted）中的。請求失敗（限流／配額）時，mark_exhausted_and_rotate(:1383) 把那把標記為冷卻、換下一把繼續，並把狀態落地讓其他行程看得到。終局型認證失敗會標 DEAD、永久排除直到使用者手動移除。device-code OAuth 拿到的 token 也是進這個池跟著輪替。',
+    rels:[
+      ['rw','被讀','被 <b>resolve_runtime_provider</b> <b>讀</b> 出當前可用的那把憑證。'],
+      ['calls','被觸發','請求失敗時被 <b>觸發</b> 輪替（mark_exhausted_and_rotate），換下一把。']
+    ],
+    gotcha:'輪替是被請求失敗驅動的，不是定時的：要實際打到限流／配額錯誤才換把。DEAD 的 key 會被永久排除直到手動移除（避免一把壞 key 每小時拖累整池）。多行程共用同一池時用檔案落地與 lease 協調，避免兩個行程同時挑到同一把又同時失敗。',
+    page:null
+  }
+};
+
+/* ============================================================
+   VIEW 1 — entity layout (design-space coords) + edges
+   platform col (left) → gateway core (center) → agent boundary (right)
+   sessiondb sits below the core.
+   ============================================================ */
+var LAYOUT={
+  'aiagent':  {x:40,   y:300},
+  'resolve':  {x:560,  y:110},
+  'registry': {x:560,  y:430},
+  'profile':  {x:1130, y:110},
+  'catalog':  {x:1130, y:430},
+  'pool':     {x:560,  y:680}
+};
+var BOX_W=222;
+
+/* Edges: [from, to, kind, label]
+   from/to are entity ids; ports auto-derived from box geometry. */
+var EDGES=[
+  ['aiagent','resolve','calls','要一個模型'],
+  ['aiagent','registry','calls','取 profile 組請求'],
+  ['resolve','registry','calls','查供應商'],
+  ['registry','profile','owns','登錄並取出'],
+  ['resolve','pool','rw','讀出當前憑證'],
+  ['pool','resolve','calls','失敗時換下一把'],
+  ['profile','catalog','rw','查模型能力 / 清單']
+];
+
+/* approximate collapsed box heights for port math (collapsed = head + role) */
+var BOX_H=92;
+
+function boxRect(id){
+  var L=LAYOUT[id];
+  var el=document.querySelector('.entity[data-entity="'+id+'"]');
+  var h=el?el.offsetHeight:BOX_H;
+  return {x:L.x, y:L.y, w:BOX_W, h:h, cx:L.x+BOX_W/2, cy:L.y+h/2};
+}
+/* pick connection ports on box edges facing each other */
+function ports(a,b){
+  var dx=b.cx-a.cx, dy=b.cy-a.cy;
+  function side(r,toX,toY){
+    if(Math.abs(toX-r.cx) > Math.abs(toY-r.cy)){
+      return toX>r.cx ? {x:r.x+r.w, y:r.cy} : {x:r.x, y:r.cy};
+    } else {
+      return toY>r.cy ? {x:r.cx, y:r.y+r.h} : {x:r.cx, y:r.y};
+    }
+  }
+  return [side(a,b.cx,b.cy), side(b,a.cx,a.cy)];
+}
+
+function buildEntities(){
+  var host=document.getElementById('canvas1');
+  Object.keys(ENTITIES).forEach(function(id){
+    var e=ENTITIES[id], L=LAYOUT[id];
+    var box=document.createElement('div');
+    box.className='entity '+e.cluster+(id==='aiagent'?' boundary':'');
+    box.setAttribute('data-entity',id);
+    box.setAttribute('data-detail',id);
+    box.setAttribute('role','button');
+    box.setAttribute('tabindex','0');
+    box.style.left=L.x+'px'; box.style.top=L.y+'px';
+    box.innerHTML=
+      '<span class="etag"></span>'+
+      '<div class="ehead">'+
+        '<span class="ename">'+e.name.replace(/（.*?）/,'')+'</span>'+
+      '</div>'+
+      '<div class="erole">'+e.purpose+'</div>';
+    host.appendChild(box);
+  });
+}
+
+function buildEdges(){
+  var svg=document.getElementById('edges1');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  EDGES.forEach(function(e,i){
+    var from=e[0], to=e[1], kind=e[2], label=e[3];
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    var tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+    var d, lx, ly;
+    if(from===to){
+      var r=boxRect(from);
+      var sx=r.x+r.w-26, sy=r.y, ex=r.x+r.w-6, ey=r.y;
+      d='M '+sx+' '+sy+' C '+(sx)+' '+(sy-26)+' '+(ex)+' '+(ey-26)+' '+ex+' '+ey;
+      lx=(sx+ex)/2; ly=sy-30;
+    } else {
+      var a=boxRect(from), b=boxRect(to);
+      var p=ports(a,b);
+      var f=p[0], t=p[1];
+      var mx=(f.x+t.x)/2, my=(f.y+t.y)/2;
+      var dx=t.x-f.x, dy=t.y-f.y;
+      var len=Math.sqrt(dx*dx+dy*dy)||1;
+      var px=-dy/len, py=dx/len;
+      var bend=Math.min(40, len*0.12);
+      var cx=mx+px*bend, cy=my+py*bend;
+      d='M '+f.x+' '+f.y+' Q '+cx+' '+cy+' '+t.x+' '+t.y;
+      lx=0.25*f.x+0.5*cx+0.25*t.x; ly=0.25*f.y+0.5*cy+0.25*t.y;
+    }
+    path.setAttribute('d',d);
+    path.setAttribute('class','edge-path');
+    path.setAttribute('data-edge',i);
+    path.setAttribute('data-from',from); path.setAttribute('data-to',to); path.setAttribute('data-kind',kind);
+    path.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+    svg.appendChild(path);
+    var tw=label.length*7.2+8;
+    bg.setAttribute('x',lx-tw/2); bg.setAttribute('y',ly-9);
+    bg.setAttribute('width',tw); bg.setAttribute('height',16);
+    bg.setAttribute('rx',4); bg.setAttribute('class','edge-label-bg'); bg.setAttribute('data-elabel',i);
+    svg.appendChild(bg);
+    tx.setAttribute('x',lx); tx.setAttribute('y',ly+3);
+    tx.setAttribute('text-anchor','middle'); tx.setAttribute('class','edge-label'); tx.setAttribute('data-elabel',i);
+    tx.textContent=label;
+    svg.appendChild(tx);
+  });
+}
+
+/* focus+context: highlight one entity's edges, dim the rest */
+function focusEntity(id){
+  var paths=document.querySelectorAll('.edge-path');
+  paths.forEach(function(p){
+    var on = p.getAttribute('data-from')===id || p.getAttribute('data-to')===id;
+    p.classList.toggle('hot',on);
+    p.classList.toggle('dim',!on);
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', on
+      ? (kind==='isa'?'url(#tri-isa-hot)':'url(#arrow-hot)')
+      : (kind==='isa'?'url(#tri-isa)':'url(#arrow)'));
+  });
+  EDGES.forEach(function(e,i){
+    var on = e[0]===id || e[1]===id;
+    document.querySelectorAll('[data-elabel="'+i+'"]').forEach(function(n){
+      n.classList.toggle('hot',on); n.classList.toggle('dim',!on);
+    });
+  });
+  document.querySelectorAll('.entity').forEach(function(el){
+    el.classList.toggle('lit', el.getAttribute('data-entity')===id);
+  });
+}
+function clearFocus(){
+  document.querySelectorAll('.edge-path').forEach(function(p){
+    p.classList.remove('hot','dim');
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+  });
+  document.querySelectorAll('.edge-label,.edge-label-bg').forEach(function(n){n.classList.remove('hot','dim');});
+  document.querySelectorAll('.entity.lit').forEach(function(el){el.classList.remove('lit');});
+}
+
+/* ============================================================
+   VIEW 2 — sequence diagram layout (一則訊息在 gateway 裡走一遍)
+   ============================================================ */
+var SEQ_ACTORS = [
+  {id:'aiagent',  label:'AIAgent',     sub:'run_agent（邊界）', x:90},
+  {id:'resolve',  label:'resolve_…',   sub:'runtime_provider',  x:330},
+  {id:'pool',     label:'CredentialPool', sub:'credential_pool', x:560},
+  {id:'registry', label:'get_provider_profile', sub:'providers',  x:800},
+  {id:'profile',  label:'ProviderProfile', sub:'+ 28 家外掛',     x:965}
+];
+var SEQ_MSGS = [
+  ['aiagent','resolve',   '1','我要一個模型（provider / model）',110,'fwd'],
+  ['resolve','resolve',   '2','解析：Azure？自訂？本機？再到後備鏈',150,'self'],
+  ['resolve','pool',      '3','select 選一把可用憑證',214,'fwd'],
+  ['pool','resolve',      '4','當前 api_key / base_url',262,'ret'],
+  ['resolve','aiagent',   '5','runtime dict（家、key、base_url、api_mode）',312,'ret'],
+  ['aiagent','registry',  '6','get_provider_profile(provider)',360,'fwd'],
+  ['registry','profile',  '7','取出該家 ProviderProfile，組這次請求',404,'fwd'],
+  ['pool','pool',         '8','若打到限流：mark_exhausted_and_rotate 換下一把',452,'self']
+];
+function actorX(id){for(var i=0;i<SEQ_ACTORS.length;i++){if(SEQ_ACTORS[i].id===id)return SEQ_ACTORS[i].x;}return 0;}
+
+function buildSequence(){
+  var holder=document.getElementById('seq1');
+  var svg=document.getElementById('seqsvg');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  Array.prototype.slice.call(holder.querySelectorAll('.seq-actorbox,.seq-step')).forEach(function(n){n.remove();});
+  var topY=78, botY=520;
+  SEQ_ACTORS.forEach(function(a){
+    var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',a.x); line.setAttribute('y1',topY);
+    line.setAttribute('x2',a.x); line.setAttribute('y2',botY);
+    line.setAttribute('class','seq-lifeline');
+    svg.appendChild(line);
+    var box=document.createElement('div');
+    box.className='seq-actorbox'; box.style.left=a.x+'px'; box.style.top='18px';
+    box.setAttribute('data-entity',a.id);
+    box.innerHTML='<div class="an">'+a.label+'</div><div class="ar">'+a.sub+'</div>';
+    var col=CLUSTER_COLOR[(ENTITIES[a.id]||{}).cluster]||'#4554d6';
+    box.style.borderTopColor=col; box.style.borderTopWidth='3px';
+    holder.appendChild(box);
+  });
+  SEQ_MSGS.forEach(function(m){
+    var x1=actorX(m[0]), x2=actorX(m[1]), y=m[4], kind=m[5];
+    var cls=kind==='ret'?'ret':kind==='self'?'self':'';
+    var mk=kind==='ret'?'url(#seqarrow-ret)':kind==='self'?'url(#seqarrow-self)':'url(#seqarrow)';
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var d;
+    if(kind==='self'){ d='M '+x1+' '+y+' h 46 v 26 h -46'; }
+    else { d='M '+x1+' '+y+' L '+x2+' '+y; }
+    path.setAttribute('d',d); path.setAttribute('class','seq-arrow '+cls);
+    path.setAttribute('marker-end',mk);
+    svg.appendChild(path);
+    var numt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    numt.setAttribute('x',(kind==='self'? x1+10 : Math.min(x1,x2)+8));
+    numt.setAttribute('y',y-6); numt.setAttribute('class','seq-msgnum');
+    numt.textContent=m[2];
+    svg.appendChild(numt);
+    var lx=kind==='self'? x1+54 : (x1+x2)/2;
+    var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lt.setAttribute('x',lx); lt.setAttribute('y', kind==='self'? y+18 : y-6);
+    lt.setAttribute('text-anchor', kind==='self'?'start':'middle');
+    lt.setAttribute('class','seq-msglabel'); lt.textContent=m[3];
+    svg.appendChild(lt);
+    var target = kind==='ret'? m[0] : m[1];
+    if(kind==='self') target=m[0];
+    var step=document.createElement('div');
+    step.className='seq-step'; step.setAttribute('data-entity',target);
+    var hx=Math.min(x1,x2), hw=Math.abs(x2-x1)||60;
+    step.style.left=(hx-4)+'px'; step.style.top=(y-14)+'px';
+    step.style.width=(hw+8)+'px'; step.style.height=(kind==='self'?40:22)+'px';
+    step.title='步驟 '+m[2]+'：'+m[3];
+    holder.appendChild(step);
+  });
+}
+
+/* ============================================================
+   DETAIL PANEL
+   ============================================================ */
+var scrim=document.getElementById('scrim');
+var panel=document.getElementById('panel');
+var pbody=document.getElementById('pbody');
+var KIND_LABEL={owns:'持有（owns）',calls:'呼叫（calls）',rw:'讀寫（reads-writes）',isa:'繼承（is-a）'};
+var KIND_CLASS={owns:'r-owns',calls:'r-calls',rw:'r-rw',isa:'r-isa'};
+
+function openPanel(id){
+  var e=ENTITIES[id]; if(!e)return;
+  document.getElementById('pname').textContent=e.name;
+  document.getElementById('pstereo').textContent=e.stereo;
+  var col=CLUSTER_COLOR[e.cluster]||'#4554d6';
+  document.getElementById('pmark').style.background=col;
+  var html='';
+  html+='<p class="role-line">'+e.role+'</p>';
+  html+='<h4>它是什麼 / 做什麼</h4><p>'+e.summary+'</p>';
+  html+='<h4>關鍵方法 / 欄位</h4><ul class="keymethods">';
+  e.methods.forEach(function(m){
+    html+='<li><span class="mono">'+m[0]+'</span>';
+    if(m[1] && m[1]!=='—'){html+=' '+refChip(m[1]);}
+    html+='</li>';
+  });
+  html+='</ul>';
+  html+='<h4>跟鄰居的關係</h4><ul class="rels">';
+  e.rels.forEach(function(r){
+    html+='<li class="'+(KIND_CLASS[r[0]]||'')+'"><span class="relverb">'+(KIND_LABEL[r[0]]||r[0])+'</span>：'+r[2]+'</li>';
+  });
+  html+='</ul>';
+  if(e.gotcha){
+    html+='<h4>限制 / 容易誤解的地方</h4><div class="gotcha"><p>'+e.gotcha+'</p></div>';
+  }
+  if(e.page){
+    html+='<div style="margin-top:18px"><a class="panel-detaillink" href="'+e.page+'">細節頁：'+e.page+' →</a></div>';
+  } else {
+    html+='<div style="margin-top:18px"><span class="panel-detaillink none">（providers 子系統內，無另開細節頁）</span></div>';
+  }
+  pbody.innerHTML=html;
+  pbody.scrollTop=0;
+  panel.classList.add('open'); scrim.classList.add('open');
+  panel.setAttribute('aria-hidden','false');
+  document.querySelectorAll('.entity.sel,.seq-actorbox.sel,.seq-step.sel').forEach(function(n){n.classList.remove('sel');});
+  document.querySelectorAll('[data-entity="'+id+'"]').forEach(function(n){n.classList.add('sel');});
+  focusEntity(id);
+}
+function closePanel(){
+  panel.classList.remove('open'); scrim.classList.remove('open');
+  panel.setAttribute('aria-hidden','true');
+  document.querySelectorAll('.sel').forEach(function(n){n.classList.remove('sel');});
+  clearFocus();
+}
+document.getElementById('pclose').addEventListener('click',closePanel);
+scrim.addEventListener('click',closePanel);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePanel();});
+
+/* ============================================================
+   INTERACTIONS — detail open, hover focus
+   ============================================================ */
+document.addEventListener('click',function(ev){
+  var det=ev.target.closest('[data-detail]');
+  if(det){ openPanel(det.getAttribute('data-detail')); ev.stopPropagation(); return; }
+  var seqt=ev.target.closest('.seq-actorbox,.seq-step');
+  if(seqt){ openPanel(seqt.getAttribute('data-entity')); return; }
+});
+
+/* keyboard: Enter / Space on a focused card opens the drawer */
+document.addEventListener('keydown',function(ev){
+  if(ev.key!=='Enter' && ev.key!==' ') return;
+  var card=ev.target.closest && ev.target.closest('.entity[data-detail]');
+  if(card){ ev.preventDefault(); openPanel(card.getAttribute('data-detail')); }
+});
+
+/* hover an entity → focus its edges */
+document.addEventListener('mouseover',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){ focusEntity(card.getAttribute('data-entity')); }
+});
+document.addEventListener('mouseout',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){
+    var to=ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('.entity');
+    if(!to) clearFocus();
+  }
+});
+
+/* ============================================================
+   TABS + responsive scaling
+   ============================================================ */
+var tabs=document.querySelectorAll('.tab');
+tabs.forEach(function(tb){
+  tb.addEventListener('click',function(){
+    tabs.forEach(function(x){x.classList.remove('active'); x.setAttribute('aria-selected','false');});
+    tb.classList.add('active'); tb.setAttribute('aria-selected','true');
+    var v=tb.getAttribute('data-view');
+    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+    document.getElementById('view-'+v).classList.add('active');
+    if(v==='v1'){ requestAnimationFrame(function(){buildEdges(); fitCanvas();}); }
+  });
+});
+
+/* big whiteboard: no shrink-to-fit. The .canvas wrapper scrolls in both
+   directions; the page itself stays put. */
+function fitCanvas(){
+  var inner=document.getElementById('canvas1');
+  if(!inner)return;
+  inner.style.transform='none';
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+buildConcepts();
+hydrateRefs(document);   // hydrate static refs in the caveat note
+buildEntities();
+buildEdges();
+buildSequence();
+fitCanvas();
+</script>
+
+</body>
+</html>

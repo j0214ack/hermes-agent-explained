@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes 架構解說 · Tools 與 MCP</title>
+<style>
+/* ============================================================
+   SHARED DESIGN SYSTEM  (carried from gateway.html verbatim)
+   ============================================================ */
+:root{
+  --bg:        #f7f8fa;
+  --bg-card:   #ffffff;
+  --bg-sunken: #f0f2f5;
+  --ink:       #1c2330;
+  --ink-soft:  #4a5468;
+  --ink-faint: #8b94a6;
+  --line:      #e2e6ec;
+  --line-soft: #eceff3;
+  --accent:    #4554d6;       /* indigo accent */
+  --accent-ink:#3340b8;
+  --accent-bg: #eef0fd;
+  --accent-bg2:#e4e7fb;
+  --warn-bg:   #fff8ec;
+  --warn-line: #f0dcb0;
+  --warn-ink:  #8a6418;
+  --ok:        #2f9e6f;
+  /* cluster accent tints (informal map) */
+  --c-platform:#2f7fd1; --c-platform-bg:#eaf3fc;
+  --c-core:    #6048c4; --c-core-bg:#efebfb;
+  --c-tools:   #1f9e88; --c-tools-bg:#e6f5f1;
+  --c-provider:#c4682f; --c-provider-bg:#fbf0e7;
+  --c-persist: #b0407a; --c-persist-bg:#fbe9f2;
+  --c-learn:   #6a8f1f; --c-learn-bg:#f1f6e4;
+  --radius:    10px;
+  --radius-sm: 6px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+          "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif;
+  --shadow: 0 1px 2px rgba(20,28,46,.04), 0 2px 8px rgba(20,28,46,.05);
+  --shadow-lift: 0 4px 16px rgba(20,28,46,.10);
+  --maxw: 1180px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); line-height:1.7;
+  font-size:16px; -webkit-font-smoothing:antialiased;
+}
+code, .mono{font-family:var(--mono); font-size:.86em}
+a{color:var(--accent-ink); text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{line-height:1.3; font-weight:680}
+h2{font-size:1.4rem; margin:0 0 .2em}
+h3{font-size:1.06rem; margin:0 0 .3em}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+/* ---- file:line reference chip + repo link (shared) ---- */
+.ref{
+  font-family:var(--mono); font-size:.8em;
+  background:var(--bg-sunken); color:var(--ink-soft);
+  border:1px solid var(--line); border-radius:5px;
+  padding:.05em .42em; white-space:nowrap; display:inline-block;
+}
+.ref b{color:var(--accent-ink); font-weight:600}
+a.ref{cursor:pointer; transition:background .12s, border-color .12s}
+a.ref:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+a.ref::after{content:" \2197"; font-size:.85em; color:var(--ink-faint)}
+a.ref:hover::after{color:var(--accent-ink)}
+
+/* ---- persistent top nav (shared) ---- */
+.topnav{
+  position:sticky; top:0; z-index:80;
+  background:rgba(247,248,250,.88); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topnav .wrap{display:flex; align-items:center; gap:6px; height:56px; flex-wrap:wrap}
+.brand{font-weight:720; letter-spacing:.2px; margin-right:10px; white-space:nowrap}
+.brand small{color:var(--ink-faint); font-weight:500; font-size:.7rem; margin-left:6px}
+.navlinks{display:flex; gap:2px; flex-wrap:wrap}
+.navlinks a{
+  color:var(--ink-soft); font-size:.85rem; padding:5px 11px;
+  border-radius:7px; white-space:nowrap;
+}
+.navlinks a:hover{background:var(--bg-sunken); text-decoration:none}
+.navlinks a.active{background:var(--accent-bg); color:var(--accent-ink); font-weight:600}
+
+.section{margin:40px 0}
+/* full-bleed: break a block out of the readable column to span the viewport
+   width. used by the diagram section so the wide whiteboard fits with little
+   or no horizontal scroll. prose sections keep the ~1180px column. */
+.fullbleed{
+  width:96vw;
+  margin-left:calc(50% - 48vw);
+  margin-right:calc(50% - 48vw);
+}
+.fullbleed .bleed-inner{max-width:none; padding:0 24px}
+.eyebrow{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 6px;
+}
+.lead{color:var(--ink-soft); max-width:76ch}
+
+/* ---- breadcrumb (detail page) ---- */
+.crumb{
+  font-size:.84rem; color:var(--ink-faint); margin:0 0 4px;
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+}
+.crumb a{color:var(--ink-soft); font-weight:600}
+.crumb .sep{color:var(--ink-faint)}
+.crumb .here{color:var(--accent-ink); font-weight:700}
+
+/* ---- snapshot stamp (shared) ---- */
+.stamp{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:.78rem;
+  background:var(--bg-card); border:1px solid var(--line);
+  border-radius:99px; padding:5px 14px; color:var(--ink-soft);
+  box-shadow:var(--shadow);
+}
+.stamp .dot{width:7px; height:7px; border-radius:50%; background:var(--ok)}
+.stamp b{color:var(--ink); font-weight:600}
+
+/* ---- footer (shared) ---- */
+footer{
+  border-top:1px solid var(--line); margin-top:60px;
+  padding:26px 0 50px; color:var(--ink-faint); font-size:.8rem;
+}
+footer .wrap{display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; align-items:center}
+footer .mono{font-family:var(--mono)}
+
+/* hero */
+.hero{padding:30px 0 8px}
+.hero h1{font-size:2.05rem; margin:.1em 0 .35em; letter-spacing:-.01em}
+.hero .sub{color:var(--ink-soft); font-size:1.04rem; max-width:74ch; margin:0 0 18px}
+.snapshot-line{color:var(--ink-faint); font-size:.84rem; margin-top:12px; max-width:72ch}
+
+/* ============================================================
+   CONCEPTS SECTION — ubiquitous language glossary
+   ============================================================ */
+.concepts{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  padding:26px 28px 30px;
+}
+.concepts .intro{color:var(--ink-soft); max-width:78ch; margin:0 0 4px}
+.concept-groups{
+  display:grid; grid-template-columns:repeat(2,1fr); gap:22px 30px; margin-top:22px;
+}
+@media (max-width:760px){ .concept-groups{grid-template-columns:1fr} }
+.cgroup h3{
+  font-size:.96rem; margin:0 0 10px; display:flex; align-items:center; gap:8px;
+}
+.cgroup h3 .gdot{width:10px; height:10px; border-radius:3px; flex:0 0 auto}
+.glist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px}
+.glist li{padding-left:2px}
+.gterm{font-weight:680; color:var(--ink); font-size:.92rem}
+.gterm .en{font-family:var(--mono); font-size:.78rem; font-weight:600; color:var(--accent-ink); margin-left:5px}
+.gdef{color:var(--ink-soft); font-size:.86rem; line-height:1.55; margin-top:2px}
+.gdef .ref{margin-left:4px}
+.cgroup.g-recv h3 .gdot{background:var(--c-tools)}
+.cgroup.g-drive h3 .gdot{background:var(--c-core)}
+.cgroup.g-send h3 .gdot{background:var(--c-provider)}
+
+/* ============================================================
+   VIEW TABS
+   ============================================================ */
+.tabs{display:flex; gap:6px; margin:6px 0 6px; flex-wrap:wrap; align-items:center}
+.tab{
+  font-family:var(--sans); font-size:.9rem; font-weight:600;
+  color:var(--ink-soft); background:var(--bg-card);
+  border:1px solid var(--line); border-radius:9px;
+  padding:8px 16px; cursor:pointer; transition:all .14s;
+}
+.tab:hover{background:var(--bg-sunken); color:var(--ink)}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+.tab .tnote{font-weight:500; font-size:.78rem; opacity:.8; margin-left:6px}
+.tab.active .tnote{opacity:.9}
+/* quiet sub-label: the cards in the diagram are clickable */
+.clickhint{
+  color:var(--ink-faint); font-size:.8rem; font-weight:500;
+  margin-left:4px; display:inline-flex; align-items:center; gap:5px;
+}
+.clickhint::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--accent); opacity:.55; flex:0 0 auto;
+}
+.view{display:none}
+.view.active{display:block}
+.viewhint{color:var(--ink-faint); font-size:.85rem; margin:4px 0 14px}
+.viewhint b{color:var(--ink-soft)}
+
+/* ============================================================
+   VIEW 1 — informal class diagram (entity map)
+   ============================================================ */
+.diagram-shell{position:relative}
+.canvas{
+  position:relative; width:100%;
+  border:1px solid var(--line); border-radius:14px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(120,130,150,.13) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--bg-card);
+  box-shadow:var(--shadow);
+  /* roomy whiteboard: the canvas itself scrolls in both directions, page stays put */
+  overflow:auto; -webkit-overflow-scrolling:touch;
+  max-height:80vh;
+}
+/* fixed design coordinate space — big whiteboard, no shrink-to-fit */
+.canvas-inner{position:relative; width:1500px; height:880px; margin:0}
+.svg-edges{position:absolute; inset:0; width:1500px; height:880px; pointer-events:none; z-index:1}
+/* edges DE-EMPHASIZED by default */
+.edge-path{fill:none; stroke:#d2d8e2; stroke-width:1.2; transition:stroke .15s, stroke-width .15s, opacity .15s}
+.edge-path.hot{stroke:var(--accent); stroke-width:2.4; opacity:1}
+.edge-path.dim{opacity:.32}
+.edge-label{
+  font-family:var(--mono); font-size:11px; fill:var(--ink-faint);
+  transition:fill .15s, opacity .15s; opacity:0;
+}
+.edge-label.hot{fill:var(--accent-ink); opacity:1}
+.edge-label.dim{opacity:0}
+.edge-label-bg{fill:var(--bg-card); opacity:0; transition:opacity .15s}
+.edge-label-bg.hot{opacity:.94}
+/* arrow markers dim by default, lit on .hot via JS marker swap */
+
+/* class boxes — compact static tiles, whole card opens the drawer */
+.entity{
+  position:absolute; z-index:2;
+  width:222px; background:var(--bg-card);
+  border:1.5px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow);
+  transition:transform .12s, box-shadow .14s, border-color .14s;
+  overflow:hidden; cursor:pointer; user-select:none;
+}
+.entity:hover{transform:translateY(-2px); box-shadow:var(--shadow-lift)}
+.entity:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.entity.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.entity.lit{box-shadow:0 0 0 2px var(--accent-bg2), var(--shadow-lift)}
+.entity .ehead{
+  padding:10px 13px 4px; display:flex; align-items:center; gap:7px;
+}
+.entity .ename{font-weight:700; font-size:.95rem; letter-spacing:.1px}
+.entity .erole{
+  padding:0 13px 11px; font-size:.78rem; color:var(--ink-soft);
+  line-height:1.45;
+}
+.entity .etag{
+  position:absolute; top:0; left:0; width:5px; height:100%;
+}
+/* cluster colourings */
+.entity.platform{border-color:#cfe1f4}
+.entity.platform .etag{background:var(--c-platform)}
+.entity.platform .ename{color:var(--c-platform)}
+.entity.core{border-color:#dcd5f4}
+.entity.core .etag{background:var(--c-core)}
+.entity.core .ename{color:var(--c-core)}
+.entity.tools{border-color:#cdeae3}
+.entity.tools .etag{background:var(--c-tools)}
+.entity.tools .ename{color:var(--c-tools)}
+.entity.provider{border-color:#f0ddca}
+.entity.provider .etag{background:var(--c-provider)}
+.entity.provider .ename{color:var(--c-provider)}
+.entity.persist{border-color:#f4d3e3}
+.entity.persist .etag{background:var(--c-persist)}
+.entity.persist .ename{color:var(--c-persist)}
+.entity.learn{border-color:#e3edca}
+.entity.learn .etag{background:var(--c-learn)}
+.entity.learn .ename{color:var(--c-learn)}
+/* boundary entity (the agent core, owned by the Agent detail page) — dashed edge */
+.entity.boundary{border-style:dashed; opacity:.96}
+.entity.boundary .erole{color:var(--ink-faint)}
+
+/* cluster labels (informal hand-drawn group hint) */
+.cluster-label{
+  position:absolute; z-index:1; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:600;
+  border:1px dashed var(--line); border-radius:99px;
+  padding:2px 11px; background:rgba(255,255,255,.6);
+}
+
+/* legend + toolbar */
+.diagram-toolbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:14px 0 4px}
+.minibtn{
+  font-size:.78rem; font-weight:600; color:var(--ink-soft);
+  background:var(--bg-card); border:1px solid var(--line); border-radius:8px;
+  padding:5px 12px; cursor:pointer; transition:all .12s;
+}
+.minibtn:hover{background:var(--bg-sunken); color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:14px; font-size:.8rem; color:var(--ink-soft)}
+.legend .li{display:inline-flex; align-items:center; gap:6px}
+.legend .swatch{width:24px; height:0; border-top-width:2px; border-top-style:solid}
+.legend .sw-owns{border-color:var(--c-core)}
+.legend .sw-calls{border-color:#9aa4b6}
+.legend .sw-rw{border-color:var(--c-persist); border-top-style:dashed}
+.legend .sw-isa{border-color:#9aa4b6; border-top-style:dotted}
+.legend .dotc{width:11px;height:11px;border-radius:3px}
+
+/* ============================================================
+   VIEW 2 — informal sequence diagram
+   ============================================================ */
+.seq-shell{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  overflow-x:auto;
+}
+.seq-inner{position:relative; width:1040px; min-width:1040px; height:560px; margin:0 auto}
+.seq-svg{position:absolute; inset:0; width:1040px; height:560px}
+.seq-lifeline{stroke:#c4ccd9; stroke-width:1.4; stroke-dasharray:4 4}
+.seq-arrow{stroke:#7d8aa0; stroke-width:1.6; fill:none}
+.seq-arrow.ret{stroke:#b0407a; stroke-dasharray:5 4}
+.seq-arrow.self{stroke:#6a8f1f}
+.seq-msglabel{font-family:var(--sans); font-size:12px; fill:var(--ink)}
+.seq-msgnum{font-family:var(--mono); font-size:11px; fill:var(--accent); font-weight:700}
+.seq-actorbox{
+  position:absolute; transform:translateX(-50%);
+  width:150px; text-align:center; cursor:pointer; z-index:3;
+  border-radius:10px; padding:8px 5px; box-shadow:var(--shadow);
+  border:1.5px solid var(--line); background:var(--bg-card);
+  transition:transform .12s, box-shadow .14s;
+}
+.seq-actorbox:hover{transform:translateX(-50%) translateY(-2px); box-shadow:var(--shadow-lift)}
+.seq-actorbox.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.seq-actorbox .an{font-weight:700; font-size:.82rem}
+.seq-actorbox .ar{font-size:.66rem; color:var(--ink-faint); font-family:var(--mono)}
+.seq-step{
+  position:absolute; z-index:3; cursor:pointer;
+  border-radius:6px; transition:background .12s;
+}
+.seq-step:hover{background:rgba(69,84,214,.08)}
+.seq-step.sel{background:rgba(69,84,214,.13); outline:1.5px solid var(--accent-bg2)}
+
+/* ============================================================
+   DETAIL PANEL (shared by both views) — slide-in side panel
+   ============================================================ */
+.panel-scrim{
+  position:fixed; inset:0; background:rgba(20,28,46,.34);
+  z-index:90; opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.panel-scrim.open{opacity:1; pointer-events:auto}
+.panel{
+  position:fixed; top:0; right:0; height:100%; width:min(540px,94vw);
+  background:var(--bg-card); z-index:95; box-shadow:-8px 0 30px rgba(20,28,46,.16);
+  transform:translateX(100%); transition:transform .24s cubic-bezier(.4,.0,.2,1);
+  display:flex; flex-direction:column;
+}
+.panel.open{transform:translateX(0)}
+.panel-head{
+  padding:18px 22px 14px; border-bottom:1px solid var(--line);
+  display:flex; align-items:flex-start; gap:12px;
+}
+.panel-head .pmark{
+  flex:0 0 auto; width:10px; height:38px; border-radius:4px; margin-top:2px;
+  background:var(--accent);
+}
+.panel-head .ph-t{flex:1 1 auto; min-width:0}
+.panel-head .ph-name{font-size:1.18rem; font-weight:720; letter-spacing:.1px}
+.panel-head .ph-stereo{font-family:var(--mono); font-size:.72rem; color:var(--ink-faint); margin-top:2px}
+.panel-close{
+  flex:0 0 auto; cursor:pointer; border:1px solid var(--line);
+  background:var(--bg-sunken); border-radius:8px; width:32px; height:32px;
+  font-size:1.1rem; color:var(--ink-soft); line-height:1;
+}
+.panel-close:hover{background:var(--line-soft); color:var(--ink)}
+.panel-body{padding:18px 22px 40px; overflow-y:auto; flex:1 1 auto}
+.panel-body h4{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); margin:20px 0 7px; font-weight:600;
+}
+.panel-body h4:first-child{margin-top:2px}
+.panel-body p{margin:.55em 0; color:var(--ink-soft); font-size:.92rem}
+.panel-body .role-line{font-size:1rem; color:var(--ink); margin:2px 0 4px}
+.panel-body ul.keymethods{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:7px}
+.panel-body ul.keymethods li{font-size:.86rem; color:var(--ink-soft)}
+.panel-body ul.rels{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:6px}
+.panel-body ul.rels li{font-size:.88rem; color:var(--ink-soft); padding-left:18px; position:relative}
+.panel-body ul.rels li::before{
+  content:""; position:absolute; left:0; top:.62em; width:9px; height:9px;
+  border-radius:2px; background:var(--ink-faint);
+}
+.panel-body ul.rels li.r-owns::before{background:var(--c-core)}
+.panel-body ul.rels li.r-calls::before{background:#9aa4b6}
+.panel-body ul.rels li.r-rw::before{background:var(--c-persist)}
+.panel-body ul.rels li.r-isa::before{background:var(--c-platform)}
+.panel-body .relverb{font-weight:700; color:var(--ink)}
+.gotcha{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:10px; padding:13px 16px; margin:10px 0 4px;
+}
+.gotcha p{color:#5f4d22; margin:.3em 0; font-size:.88rem}
+.panel-detaillink{
+  display:inline-flex; align-items:center; gap:6px; margin-top:6px;
+  font-size:.86rem; font-weight:600; color:var(--accent-ink);
+  background:var(--accent-bg); padding:6px 14px; border-radius:8px;
+}
+.panel-detaillink:hover{background:var(--accent-bg2); text-decoration:none}
+.panel-detaillink.none{background:var(--bg-sunken); color:var(--ink-faint); font-weight:500; cursor:default}
+
+/* honest note callout */
+.note{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:var(--radius); padding:18px 22px; margin:18px 0;
+}
+.note .eyebrow{color:var(--warn-ink)}
+.note p{margin:.4em 0; color:#5f4d22}
+
+/* related cross-links */
+.related{
+  border:1px solid var(--line); border-radius:14px; background:var(--bg-card);
+  box-shadow:var(--shadow); padding:22px 24px;
+}
+.related h3{margin:0 0 4px}
+.relgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px}
+@media (max-width:680px){ .relgrid{grid-template-columns:1fr} }
+.relcard{
+  display:block; border:1px solid var(--line); border-radius:10px;
+  padding:13px 15px; background:var(--bg-sunken); transition:all .12s;
+}
+.relcard:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+.relcard .rk{font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+.relcard .rt{font-weight:680; color:var(--ink); margin-top:2px}
+.relcard .rd{font-size:.82rem; color:var(--ink-soft); margin-top:3px}
+
+/* responsive */
+.scaler{overflow-x:auto; -webkit-overflow-scrolling:touch}
+@media (max-width:680px){
+  .hero h1{font-size:1.6rem}
+  .topnav .wrap{height:auto; padding-top:8px; padding-bottom:8px}
+  .panel{width:100vw}
+  .concepts{padding:20px 18px 22px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ PERSISTENT NAV (shared, Tools active) ============ -->
+<nav class="topnav">
+  <div class="wrap">
+    <span class="brand">Hermes 架構解說<small>v0.17.0 · Tools 與 MCP</small></span>
+    <div class="navlinks">
+      <a href="index.html">總覽</a>
+      <a href="gateway.html">Gateway</a>
+      <a href="agent-learning.html">Agent 與學習</a>
+      <a href="tools-mcp.html" class="active">Tools 與 MCP</a>
+      <a href="providers.html">Providers</a>
+      <a href="state.html">State</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <p class="crumb">
+      <a href="index.html">總覽</a>
+      <span class="sep">/</span>
+      <span class="here">Tools 與 MCP 子系統</span>
+      <span class="sep">·</span>
+      <span>你在這：放大看「agent 一輪之內怎麼派發工具呼叫、怎麼接外部 MCP 伺服器」這一段</span>
+    </p>
+    <p class="eyebrow">工具派發 · 連外部工具伺服器的那層</p>
+    <h1>Tools 與 MCP：模型說「呼叫這個工具」之後，誰去執行、外部伺服器怎麼接進來</h1>
+    <p class="sub">
+      模型在一輪裡丟出一串工具呼叫，由 tool_executor 收下、派發給對應的處理函式執行，再把結果接回去。內建工具在本機跑；MCP 工具是接到一台外部工具伺服器、隔著協定來回。這頁把「派發邊界」跟「MCP 連線的生命週期與重連韌性」拆開看。誰丟出工具呼叫（對話迴圈本體）在「Agent 與學習」頁，這頁從派發那一刻接手。
+    </p>
+    <span class="stamp">
+      <span class="dot"></span>
+      <span>快照 <b>Hermes v0.17.0</b> · commit <b>2a10b83</b> · <b>2026-06-22</b></span>
+    </span>
+    <p class="snapshot-line">
+      本頁所有 <span class="mono">file:line</span> 對應上面這個 commit，點開會連到 GitHub 同一個 commit 的原始碼。Hermes 發版很快，日後行號可能位移，請以類別、函式名稱為主，行號為輔。
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ CONCEPTS FIRST ============ -->
+  <section class="section" id="concepts">
+    <p class="eyebrow">先懂這些詞 · 只列工具與 MCP 自己的概念</p>
+    <h2 style="margin-bottom:8px">本頁詞彙</h2>
+    <div class="concepts">
+      <p class="intro">
+        下面只列工具派發與 MCP 這一段會用到的詞（總覽頁的共通詞不重複）。中文名後面括號是原始碼裡用的英文，每個定義都對著原始碼確認過，點 <span class="mono">file:line</span> 可以跳到 GitHub 看出處。
+      </p>
+      <div class="concept-groups" id="conceptGroups"><!-- injected by JS --></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ TABS (full-bleed whiteboard) ============ -->
+<section class="section fullbleed" id="views">
+  <div class="bleed-inner">
+    <div class="wrap">
+      <h2 style="margin-bottom:6px">Tools 與 MCP 子系統的實體與關係</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-view="v1" role="tab" aria-selected="true">
+          視角一 · 實體圖<span class="tnote">class diagram</span>
+        </button>
+        <button class="tab" data-view="v2" role="tab" aria-selected="false">
+          視角二 · 一個 MCP 工具呼叫走一遍<span class="tnote">sequence diagram</span>
+        </button>
+        <span class="clickhint">點任一張卡片，右側看完整說明</span>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 1 ===================== -->
+    <div class="view active" id="view-v1" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">這些方塊是「工具與 MCP」子系統裡真實存在的「東西」。左邊是<b>派發邊界</b>（agent 核心畫成虛線，內部在「Agent 與學習」頁），中間是 <b>handle_function_call</b> 這個分流口，右邊整群是接外部 MCP 伺服器的機制。每個方塊只標名字和一句目的，<b>點方塊</b>就從右側看完整說明（角色、關鍵方法、關係、限制）。<b>把游標移到方塊上</b>，只會點亮它牽到的關係線，其餘變淡。畫板比視窗大時，可在框內捲動。</p>
+
+      <div class="diagram-toolbar">
+        <div class="legend">
+          <span class="li"><span class="swatch sw-owns"></span>持有（owns）</span>
+          <span class="li"><span class="swatch sw-calls"></span>呼叫（calls）</span>
+          <span class="li"><span class="swatch sw-rw"></span>讀寫（reads-writes）</span>
+          <span class="li"><span class="swatch sw-isa"></span>註冊／提供（registers）</span>
+          <span class="li"><span class="dotc" style="background:var(--c-core)"></span>派發邊界</span>
+          <span class="li"><span class="dotc" style="background:var(--c-tools)"></span>MCP 連線機制</span>
+          <span class="li"><span class="dotc" style="background:var(--c-provider)"></span>協定回呼</span>
+        </div>
+      </div>
+      </div><!-- /.wrap (view-v1 text column) -->
+
+      <div class="diagram-shell scaler">
+        <div class="canvas">
+          <div class="canvas-inner" id="canvas1">
+            <svg class="svg-edges" viewBox="0 0 1500 880" preserveAspectRatio="none" id="edges1">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#d2d8e2" stroke-width="1.4"/>
+                </marker>
+                <marker id="arrow-hot" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#4554d6" stroke-width="1.6"/>
+                </marker>
+                <marker id="tri-isa" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#d2d8e2" stroke-width="1.2"/>
+                </marker>
+                <marker id="tri-isa-hot" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#4554d6" stroke-width="1.4"/>
+                </marker>
+              </defs>
+            </svg>
+
+            <!-- cluster labels -->
+            <div class="cluster-label" style="left:40px; top:24px">派發邊界（核心在 Agent 頁）</div>
+            <div class="cluster-label" style="left:560px; top:24px">分流口</div>
+            <div class="cluster-label" style="left:1010px; top:24px">MCP 連線機制</div>
+            <div class="cluster-label" style="left:1010px; top:610px">MCP 協定回呼</div>
+
+            <!-- ENTITY BOXES injected by JS (collapsed by default) -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 2 ===================== -->
+    <div class="view" id="view-v2" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">同一批實體當生命線（lifeline），照一個 MCP 工具呼叫的流向從左到右排。箭頭是時間軸上的呼叫，由上往下發生。點上方的方塊、或點任一個帶編號的訊息步驟，右側開細節。虛線回程是結果往回送。這張是次要視角，主要看的是上面的實體圖。</p>
+
+      <div class="legend" style="margin-bottom:14px">
+        <span class="li"><span class="swatch" style="border-top:2px solid #7d8aa0"></span>呼叫（往前）</span>
+        <span class="li"><span class="swatch sw-rw" style="border-color:#b0407a"></span>回傳 / 結果（往回）</span>
+        <span class="li"><span class="swatch" style="border-top:2px solid #6a8f1f"></span>自身內部動作（含一次重連重試）</span>
+      </div>
+      </div><!-- /.wrap (view-v2 text column) -->
+
+      <div class="seq-shell scaler">
+        <div class="seq-inner" id="seq1">
+          <svg class="seq-svg" viewBox="0 0 1040 560" id="seqsvg">
+            <defs>
+              <marker id="seqarrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#7d8aa0" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-ret" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#b0407a" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-self" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#6a8f1f" stroke-width="1.3"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div><!-- /.bleed-inner -->
+</section>
+
+<main class="wrap">
+
+  <!-- ============ HONEST NOTE ============ -->
+  <section class="section" id="caveat">
+    <div class="note">
+      <p class="eyebrow">誠實提醒</p>
+      <p>MCP client 的重連是<b>寫死的有限重試</b>。常數 <code>_MAX_RECONNECT_RETRIES</code> 直接定成 5（<a class="ref" data-ref="tools/mcp_tool.py:279"><b>:279</b></a>），伺服器任務的執行迴圈裡 <code>if retries &gt; _MAX_RECONNECT_RETRIES:</code> 就 <code>return</code>、印一條 giving up 的警告，這台 MCP 伺服器就永久放棄、要到整個行程重啟才會再連（<a class="ref" data-ref="tools/mcp_tool.py:2349"><b>:2349</b></a>）。沒有 config 開關可以調這個次數。這是真實的韌性上限：一台 MCP 伺服器若連續斷 5 次，這次行程剩下的時間它就不見了。</p>
+      <p>auth 失效跟 session 過期各有一條獨立的<b>恢復重試</b>路徑：<code>_handle_auth_error_and_retry</code>（<a class="ref" data-ref="tools/mcp_tool.py:2539"><b>:2539</b></a>）會問 OAuth manager 能不能 refresh，能就重連並<b>重試一次</b>；<code>_handle_session_expired_and_retry</code>（<a class="ref" data-ref="tools/mcp_tool.py:2708"><b>:2708</b></a>）token 還有效、只是伺服器端 session 過期，所以只觸發 transport 重連並重試一次，不走 OAuth。要留意：這兩條重試是對 5 個 MCP 操作（tools/call、resources/list、resources/read、prompts/list、prompts/get）<b>一視同仁重試一次</b>，並沒有針對 create／update／delete 這類有副作用的呼叫特別跳過。所以「一個改資料的工具呼叫被重試兩次」是可能發生的，原始碼這層沒有為了避免重複副作用而做防護，這點要誠實標出來。</p>
+      <p>連線不會自己保溫，要靠 <b>keepalive</b>。HTTP／SSE 的 session 會被伺服器端依它自己的 TTL 砍掉，所以 client 用 <code>_DEFAULT_KEEPALIVE_INTERVAL = 180</code> 秒（<a class="ref" data-ref="tools/mcp_tool.py:291"><b>:291</b></a>）的節奏送 ping 探活（<code>_keepalive_probe</code>，<a class="ref" data-ref="tools/mcp_tool.py:1630"><b>:1630</b></a>）；伺服器若不支援 ping 就退而用 list_tools。idle 太久而沒及時 ping 的 session 一旦被砍，就要走前面那條重連。</p>
+      <p><a class="ref" data-ref="tools/mcp_tool.py:1404"><b>tools/mcp_tool.py</b></a> 約 4.7k 行，乍看很大，但這個大小是 MCP 協定本身的複雜度撐起來的、算合理：它要同時支撐 stdio 與 HTTP／SSE 三種傳輸、OAuth 認證與重連、sampling（伺服器反過來請 client 呼叫模型）、elicitation（伺服器請 client 跟使用者要結構化輸入）。每一塊都是協定明文要求的功能，不是雜訊堆積。</p>
+      <p>所有 <span class="mono">file:line</span> 對應 commit <b>2a10b83</b>（2026-06-22）。發版很快，日後行號很可能位移。</p>
+    </div>
+  </section>
+
+  <!-- ============ RELATED CROSS-LINKS ============ -->
+  <section class="section" id="related">
+    <div class="related">
+      <h3>相關</h3>
+      <p class="lead">這頁從「模型已經丟出工具呼叫」那一刻接手，停在工具執行完把結果交回去。再往回看、或往旁邊看：</p>
+      <div class="relgrid">
+        <a class="relcard" href="index.html">
+          <div class="rk">回到上一層</div>
+          <div class="rt">總覽 →</div>
+          <div class="rd">六群實體的全景圖，工具與 MCP 只是其中一塊。</div>
+        </a>
+        <a class="relcard" href="agent-learning.html">
+          <div class="rk">誰呼叫工具</div>
+          <div class="rt">Agent 與學習 →</div>
+          <div class="rd">對話迴圈本體：誰決定要呼叫工具、結果接回去之後怎麼接著跑下一輪。</div>
+        </a>
+        <a class="relcard" href="gateway.html">
+          <div class="rk">更外一層</div>
+          <div class="rt">Gateway →</div>
+          <div class="rd">收訊息、管 session、驅動一輪 agent 對話的主控行程。</div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ DETAIL PANEL ============ -->
+<div class="panel-scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-hidden="true">
+  <div class="panel-head">
+    <div class="pmark" id="pmark"></div>
+    <div class="ph-t">
+      <div class="ph-name" id="pname">·</div>
+      <div class="ph-stereo" id="pstereo"></div>
+    </div>
+    <button class="panel-close" id="pclose" aria-label="關閉">×</button>
+  </div>
+  <div class="panel-body" id="pbody"></div>
+</aside>
+
+<!-- ============ FOOTER (shared) ============ -->
+<footer>
+  <div class="wrap">
+    <span>整理：陳展佑 Yo</span>
+    <span class="mono">Hermes v0.17.0 · commit 2a10b83 · 2026-06-22</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   REPO LINK HELPER
+   ONE helper. Every file:line in the page goes through it.
+   ============================================================ */
+var REPO_PREFIX='https://github.com/NousResearch/hermes-agent/blob/2a10b8384aa2ef0418063ca0829e491c5916fba4/';
+/* split on LAST ':' into file + line; build <prefix><file>#L<line> */
+function refURL(ref){
+  ref=String(ref).trim();
+  var i=ref.lastIndexOf(':');
+  var file=ref, line='';
+  if(i>0 && /^\d+$/.test(ref.slice(i+1))){ file=ref.slice(0,i); line=ref.slice(i+1); }
+  return REPO_PREFIX+file+(line?('#L'+line):'');
+}
+/* render a file:line ref as a clickable repo-linked chip */
+function refChip(ref){
+  if(!ref || ref==='—') return '';
+  return '<a class="ref" href="'+refURL(ref)+'" target="_blank" rel="noopener"><b>'+ref+'</b></a>';
+}
+/* hydrate any <a class="ref" data-ref="..."> placeholders in static HTML */
+function hydrateRefs(root){
+  (root||document).querySelectorAll('a.ref[data-ref]').forEach(function(a){
+    a.href=refURL(a.getAttribute('data-ref'));
+    a.target='_blank'; a.rel='noopener';
+  });
+}
+
+/* ============================================================
+   CONCEPTS DATA — tools-and-mcp-specific ubiquitous language
+   each term: {zh, en, def, ref?}  — ref rendered via helper
+   ============================================================ */
+var CONCEPT_GROUPS=[
+  {key:'g-recv', title:'工具與派發', items:[
+    {zh:'工具', en:'tool', def:'模型能呼叫的一個具名動作（讀檔、搜尋、呼叫 MCP 伺服器上的某個功能…）。一輪裡模型可以丟出一串工具呼叫。', ref:'model_tools.py:901'},
+    {zh:'工具集', en:'toolset', def:'把相關工具歸成一組的命名分類，可以一鍵開關、彼此 includes 互相包含。設定面用工具集來決定這個 session 開哪些工具。', ref:'toolsets.py:89'},
+    {zh:'工具發現', en:'discovery', def:'把可用的 MCP 工具找出來、註冊進來的動作（對應協定的 tools/list）。MCP 伺服器連上後問它「你有哪些工具」，把結果掛進 Hermes 的工具清單。', ref:'tools/mcp_tool.py:4134'},
+  ]},
+  {key:'g-drive', title:'MCP 連線', items:[
+    {zh:'MCP', en:'Model Context Protocol', def:'連外部工具伺服器的協定。一台 MCP 伺服器對外提供工具、資源、提示，client 隔著 stdio 或 HTTP／SSE 跟它來回。', ref:'tools/mcp_tool.py:1404'},
+    {zh:'工具呼叫', en:'call', def:'真的去執行某個 MCP 工具（對應協定的 tools/call）。請求送到伺服器的 session 上，等它回結果。', ref:'tools/mcp_tool.py:3168'},
+    {zh:'有限重連', en:'bounded reconnect', def:'連線斷掉時自動重連，但有寫死的上限（最多 5 次），超過就永久放棄這台伺服器到行程重啟。沒有 config 開關。', ref:'tools/mcp_tool.py:279'},
+    {zh:'保溫探活', en:'keepalive', def:'閒置時定期送輕量 ping，免得 HTTP／SSE 的 session 被伺服器端依它的 TTL 砍掉。預設 180 秒一次，伺服器不支援 ping 就改用 list_tools。', ref:'tools/mcp_tool.py:291'},
+  ]},
+  {key:'g-send', title:'MCP 協定回呼', items:[
+    {zh:'取樣', en:'sampling', def:'反向呼叫：MCP 伺服器在執行工具的過程中，反過來請 client 這邊呼叫一次模型（createMessage）。由 SamplingHandler 接、丟到背景執行緒跑、有速率限制。', ref:'tools/mcp_tool.py:846'},
+    {zh:'徵詢', en:'elicitation', def:'另一種反向呼叫：伺服器請 client 在工具執行到一半時跟使用者要結構化輸入（例如付款授權、OAuth 確認）。表單模式會走 Hermes 既有的審批流程。', ref:'tools/mcp_tool.py:1243'},
+  ]},
+];
+
+function buildConcepts(){
+  var host=document.getElementById('conceptGroups');
+  var html='';
+  CONCEPT_GROUPS.forEach(function(g){
+    html+='<div class="cgroup '+g.key+'"><h3><span class="gdot"></span>'+g.title+'</h3><ul class="glist">';
+    g.items.forEach(function(it){
+      html+='<li><div class="gterm">'+it.zh+'<span class="en">'+it.en+'</span></div>'+
+            '<div class="gdef">'+it.def+(it.ref?(' '+refChip(it.ref)):'')+'</div></li>';
+    });
+    html+='</ul></div>';
+  });
+  host.innerHTML=html;
+}
+
+/* ============================================================
+   ENTITY DATA — tools-and-mcp cluster, with real internals
+   purpose = collapsed one-liner; methods carry file:line refs
+   ============================================================ */
+var CLUSTER_COLOR = {
+  platform:'#2f7fd1', core:'#6048c4', tools:'#1f9e88',
+  provider:'#c4682f', persist:'#b0407a', learn:'#6a8f1f'
+};
+
+var ENTITIES = {
+  'tool-executor':{
+    name:'tool_executor（模組函式）', cluster:'core', stereo:'module functions（邊界）· agent/tool_executor.py:260',
+    purpose:'收下模型丟的工具呼叫、派發執行',
+    methods:[
+      ['def execute_tool_calls_concurrent(agent, assistant_message, …)（多個並行）','agent/tool_executor.py:260'],
+      ['def execute_tool_calls_sequential(agent, assistant_message, …)（單一或互動類循序）','agent/tool_executor.py:792'],
+      ['每個呼叫 → handle_function_call(...)','agent/tool_executor.py:1224'],
+      ['run_agent.py 上的兩個方法只是 forwarder','run_agent.py:5287'],
+    ],
+    role:'這是「模型丟出工具呼叫」之後的接手點。對話迴圈算出一串工具呼叫後，由這兩個模組函式收下：多個就並行（thread pool）、單一或互動類就循序，再逐一交給分流口。它是本頁與 agent 核心之間的邊界。',
+    summary:'agent 核心在對話迴圈裡決定要呼叫哪些工具（那段在「Agent 與學習」頁）。算出那串呼叫後，控制權交到這裡：execute_tool_calls_concurrent（:260）把多個呼叫丟進 thread pool 並行跑、結果照原本順序收回；單一呼叫或互動類工具走 execute_tool_calls_sequential（:792），一個一個跑，每跑下一個前先檢查使用者有沒有按中斷。兩條路最後都把每個呼叫交給 model_tools.handle_function_call 去實際分流。run_agent.py 上同名的方法只是薄薄的 forwarder。本頁從這裡接手，不畫迴圈本身。',
+    rels:[
+      ['calls','呼叫','逐一<b>呼叫</b> handle_function_call 派發每個工具呼叫。'],
+      ['isa','被驅動','由 <b>agent 核心</b>的對話迴圈驅動（迴圈在 Agent 頁）。']
+    ],
+    gotcha:'這裡只負責「收下並派發」，不決定「要不要呼叫工具」。要追「模型為什麼選這個工具、結果接回去之後怎麼接著跑」要去 Agent 頁，不是這裡。並行與循序的選擇取決於呼叫數量與工具是否互動。',
+    page:'agent-learning.html'
+  },
+  'handle-fn':{
+    name:'handle_function_call', cluster:'core', stereo:'dispatcher · model_tools.py:901',
+    purpose:'工具呼叫的總分流口',
+    methods:[
+      ['def handle_function_call(function_name, function_args, …)','model_tools.py:901'],
+      ['# the main dispatcher','model_tools.py:587'],
+      ['內建工具本機跑 · MCP 工具走 mcp_tool 的 handler','model_tools.py:901'],
+      ['MCP 工具由 discover_mcp_tools() 註冊進來','tools/mcp_tool.py:4134'],
+    ],
+    role:'單一的工具分流口。拿到工具名稱與參數，查清楚這是哪個工具，分流到對應的處理函式：內建工具在本機執行，MCP 工具交給 mcp_tool 對應伺服器的 handler。',
+    summary:'這是「工具呼叫」真正落地的那道門。tool_executor 把每個呼叫交進來，它依工具名稱分流：內建工具（讀檔、搜尋…）在本機直接跑；屬於某台 MCP 伺服器的工具，則走 mcp_tool 在 discover 時為那個工具裝好的 handler，最後打到伺服器的 session 上。它同時是 pre／post tool-call hook、工具集啟用狀態這些橫切邏輯的匯流點。本頁把它畫成「分流口」，左邊接 tool_executor、右邊接 MCP 連線那一群。',
+    rels:[
+      ['isa','被呼叫','被 <b>tool_executor</b> 逐一呼叫，每個工具呼叫一次。'],
+      ['calls','呼叫','MCP 工具的呼叫<b>分流</b>到 <b>MCPServerTask</b> 對應的 handler（最終 session.call_tool）。']
+    ],
+    gotcha:'它是「分流」不是「執行細節」。內建工具的執行細節各在各自的工具模組裡；MCP 工具的執行細節在 mcp_tool。所以「某個工具到底做了什麼」要往它分流到的地方追，不是看這個函式本身。',
+    page:null
+  },
+  'mcp-server-task':{
+    name:'MCPServerTask', cluster:'tools', stereo:'one connection lifecycle · tools/mcp_tool.py:1404',
+    purpose:'一台 MCP 伺服器的連線與生命週期',
+    methods:[
+      ['class MCPServerTask','tools/mcp_tool.py:1404'],
+      ['整段連線生命週期跑在一個長駐 asyncio Task 裡','tools/mcp_tool.py:1404'],
+      ['工具呼叫 → session.call_tool(...)','tools/mcp_tool.py:3168'],
+      ['_keepalive_probe（閒置探活）','tools/mcp_tool.py:1630'],
+    ],
+    role:'每一台 MCP 伺服器對應一個 MCPServerTask。它把這台伺服器的整個連線生命週期（連線、發現工具、服務、斷線重連、關閉）包在一個長駐 asyncio Task 裡跑。',
+    summary:'這是 MCP 機制的核心物件。一台外部 MCP 伺服器配一個 MCPServerTask，整段連線生命週期都跑在它專屬的 asyncio Task 內，這樣 transport client 建立的 anyio cancel-scope 進出都在同一個 Task 上下文，不會亂掉。它負責：連上伺服器、做工具發現、把工具呼叫送到 session.call_tool（:3168）、用 keepalive 保溫、斷了就在執行迴圈裡重連。重連與保溫的限制是本頁誠實提醒的重點。它也是 sampling 與 elicitation 兩個協定回呼的擁有者：有開的話各建一個 handler 掛到 ClientSession 上。',
+    rels:[
+      ['owns','持有','<b>持有</b>對這台伺服器的 ClientSession，以及（若有開）SamplingHandler 與 ElicitationHandler。'],
+      ['isa','被分流到','MCP 工具呼叫從 <b>handle_function_call</b> 分流過來，打到它的 session。'],
+      ['calls','呼叫','透過 discover_mcp_tools 做工具發現、透過 session.call_tool 執行呼叫。']
+    ],
+    gotcha:'重連有寫死的上限（_MAX_RECONNECT_RETRIES = 5），超過就在執行迴圈裡 return、永久放棄這台伺服器到行程重啟，沒有 config 可調。HTTP／SSE 連線要靠 keepalive 才不會被伺服器端 TTL 砍掉。這些是真實的韌性邊界，不是 bug。',
+    page:null
+  },
+  'reconnect':{
+    name:'重連／韌性機制', cluster:'tools', stereo:'reconnect & recovery · tools/mcp_tool.py:2349',
+    purpose:'斷線重連、認證恢復、保溫探活',
+    methods:[
+      ['_MAX_RECONNECT_RETRIES = 5（寫死上限）','tools/mcp_tool.py:279'],
+      ['執行迴圈：if retries > _MAX_RECONNECT_RETRIES: return（放棄）','tools/mcp_tool.py:2349'],
+      ['_handle_auth_error_and_retry（OAuth 失效 → 恢復 + 重試一次）','tools/mcp_tool.py:2539'],
+      ['_handle_session_expired_and_retry（session 過期 → 重連 + 重試一次）','tools/mcp_tool.py:2708'],
+      ['_keepalive_probe / _DEFAULT_KEEPALIVE_INTERVAL = 180','tools/mcp_tool.py:291'],
+    ],
+    role:'MCP 連線的韌性那一層：斷了怎麼重連、認證失效怎麼恢復、閒置怎麼保溫。本頁最值得看的就是這裡，因為它把「自動恢復」的真實邊界寫得很明白。',
+    summary:'MCPServerTask 的執行迴圈在連線斷掉時會自動重連，但有上限：retries 超過 _MAX_RECONNECT_RETRIES（=5，:279）就在 :2349 處 return、印 giving up，這台伺服器這次行程就放棄了。另外兩條是針對單次操作失敗的恢復重試：_handle_auth_error_and_retry（:2539）碰到 OAuth 失效時問 manager 能不能 refresh，能就重連並重試一次；_handle_session_expired_and_retry（:2708）是 token 還有效、只有伺服器端 session 過期，所以只觸發 transport 重連並重試一次、不走 OAuth。閒置時 _keepalive_probe（:1630）以 180 秒（:291）節奏送 ping 保溫，伺服器不支援 ping 就退用 list_tools。',
+    rels:[
+      ['owns','屬於','這套機制<b>屬於</b> MCPServerTask 的執行迴圈與 5 個工具操作 handler。'],
+      ['calls','被呼叫','5 個 MCP 操作 handler 在 session.<op> 拋例外時<b>呼叫</b>這兩條恢復重試。']
+    ],
+    gotcha:'兩條恢復重試對 5 個操作（tools/call、resources/list、resources/read、prompts/list、prompts/get）一視同仁重試一次，並沒有為 create／update／delete 這種有副作用的呼叫特別跳過，所以「改資料的呼叫被重試兩次」是可能的，這層沒有防重複副作用的保護。重連上限 5 寫死、無 config。',
+    page:null
+  },
+  'sampling':{
+    name:'SamplingHandler', cluster:'provider', stereo:'sampling callback · tools/mcp_tool.py:846',
+    purpose:'伺服器反過來請 client 呼叫模型',
+    methods:[
+      ['class SamplingHandler','tools/mcp_tool.py:846'],
+      ['handler 本身 callable，直接當 ClientSession 的 sampling_callback','tools/mcp_tool.py:846'],
+      ['async callback 跑在 MCP 背景 event loop','tools/mcp_tool.py:846'],
+      ['同步 LLM 呼叫用 asyncio.to_thread 丟到執行緒，不卡 loop','tools/mcp_tool.py:846'],
+    ],
+    role:'處理 sampling/createMessage：MCP 伺服器在執行工具的過程中，反過來請 client 這邊呼叫一次模型。有開 sampling 的 MCPServerTask 各建一個 SamplingHandler。',
+    summary:'這是 MCP 的「反向呼叫」之一。平常是 client 呼叫伺服器的工具，sampling 反過來：伺服器在工具邏輯裡需要一次模型推論時，發 sampling/createMessage 請 client 代為呼叫模型、把結果回給它。每個有開 sampling 的 MCPServerTask 建一個 handler，這個物件本身可呼叫，直接當 ClientSession 的 sampling_callback。callback 是 async、跑在 MCP 背景 event loop 上；真正那次同步 LLM 呼叫用 asyncio.to_thread 丟到執行緒，避免卡住 event loop。速率限制、metrics、工具迴圈計數這些狀態都掛在實例上，沒有模組級全域。',
+    rels:[
+      ['isa','被持有','被有開 sampling 的 <b>MCPServerTask</b> 持有，掛到它的 ClientSession。'],
+      ['calls','呼叫','被觸發時<b>呼叫</b>模型（隔執行緒），把結果回給請求的伺服器。']
+    ],
+    gotcha:'這是伺服器主動發起的，方向跟一般工具呼叫相反。它讓外部 MCP 伺服器有能力用到 Hermes 這邊的模型，所以有速率限制與計數來防失控；只有明確開了 sampling 的伺服器才會建這個 handler。',
+    page:null
+  },
+  'elicitation':{
+    name:'ElicitationHandler', cluster:'provider', stereo:'elicitation callback · tools/mcp_tool.py:1243',
+    purpose:'伺服器請 client 跟使用者要結構化輸入',
+    methods:[
+      ['class ElicitationHandler','tools/mcp_tool.py:1243'],
+      ['handler callable，當 ClientSession 的 elicitation_callback（SDK 1.11.0+）','tools/mcp_tool.py:1243'],
+      ['表單模式 → 走 Hermes 既有審批 prompt_dangerous_approval','tools/mcp_tool.py:1243'],
+    ],
+    role:'處理 elicitation/create：MCP 伺服器在工具執行到一半時，請 client 跟使用者收一份結構化輸入（例如付款授權、OAuth 確認）。有開 elicitation 的 MCPServerTask 各建一個。',
+    summary:'這是 MCP 的另一種反向呼叫。工具跑到一半若需要使用者補資料，伺服器發 elicitation/create，client 這邊把欄位呈現給使用者、收齊回傳。每個有開 elicitation 的 MCPServerTask 建一個 handler，本身可呼叫，直接當 ClientSession 的 elicitation_callback（mcp Python SDK 1.11.0 起支援）。表單模式的徵詢會接到 Hermes 既有的審批系統（prompt_dangerous_approval），由它把提示送到當前 session 在用的介面（CLI、TUI、或某個聊天平台）上。',
+    rels:[
+      ['isa','被持有','被有開 elicitation 的 <b>MCPServerTask</b> 持有，掛到它的 ClientSession。'],
+      ['rw','互動','工具執行中向<b>使用者</b>要結構化輸入，經 Hermes 審批介面呈現。']
+    ],
+    gotcha:'它跟 sampling 一樣是伺服器主動發起、方向相反，但對象是「人」不是「模型」。因為會打斷工具流程跟使用者互動，所以接到審批系統而不是自動放行；輸入要在哪個介面呈現取決於當前 session 跑在哪個平台。',
+    page:null
+  },
+  'toolsets':{
+    name:'toolsets（工具集）', cluster:'tools', stereo:'tool grouping · toolsets.py:89',
+    purpose:'把工具分組、決定開哪些',
+    methods:[
+      ['TOOLSETS = { ... }（靜態定義的工具集表）','toolsets.py:89'],
+      ['get_toolset(name) / resolve_toolset(name)（展開成工具清單）','toolsets.py:658'],
+      ['resolve_multiple_toolsets(names)（多組合併）','toolsets.py:732'],
+      ['create_custom_toolset(...)（執行期自訂）','toolsets.py:845'],
+    ],
+    role:'工具的分組與註冊邏輯。決定一個 session 開哪些工具：把相關工具歸成命名的工具集，彼此可以 includes 互相包含，設定面用工具集開關。',
+    summary:'這層管「哪些工具被開」。TOOLSETS（:89）是一張靜態表，每個工具集有 description、tools 清單、可 includes 別的工具集。resolve_toolset（:658）把一個工具集名稱展開成實際的工具清單、處理 includes 的遞迴與平台註冊的工具；resolve_multiple_toolsets（:732）把多個工具集合併去重。plugin 註冊的工具集也會被納進來。它跟 handle_function_call 是兩件事：toolsets 決定「這個 session 看得到哪些工具」，handle_function_call 決定「一個被呼叫的工具怎麼跑」。',
+    rels:[
+      ['rw','被讀','工具啟用判斷會<b>讀</b>它（enabled_toolsets／disabled_toolsets 流經 handle_function_call）。'],
+      ['isa','提供','向工具層<b>提供</b>「這個 session 開哪些工具」的解析結果。']
+    ],
+    gotcha:'工具集是「分組與開關」，不是「執行」。它不知道工具實際怎麼跑，只回答「展開後是哪些工具」。MCP 發現進來的工具也會掛進工具層，但工具集的靜態表主要描述內建與 plugin 的分組。',
+    page:null
+  }
+};
+
+/* ============================================================
+   VIEW 1 — entity layout (design-space coords) + edges
+   dispatch boundary (left) → dispatcher (center) → MCP connection (right)
+   protocol callbacks sit below the connection cluster; toolsets feeds dispatcher.
+   ============================================================ */
+var LAYOUT={
+  'tool-executor':  {x:40,   y:120},
+  'toolsets':       {x:40,   y:420},
+  'handle-fn':      {x:560,  y:120},
+  'mcp-server-task':{x:1010, y:120},
+  'reconnect':      {x:1010, y:370},
+  'sampling':       {x:1010, y:650},
+  'elicitation':    {x:1260, y:650}
+};
+var BOX_W=222;
+
+/* Edges: [from, to, kind, label]
+   from/to are entity ids; ports auto-derived from box geometry. */
+var EDGES=[
+  ['tool-executor','handle-fn','calls','逐一派發工具呼叫'],
+  ['toolsets','handle-fn','isa','提供啟用的工具集'],
+  ['handle-fn','mcp-server-task','calls','MCP 工具 → session.call_tool'],
+  ['mcp-server-task','reconnect','owns','持有重連 / 保溫'],
+  ['mcp-server-task','sampling','owns','持有（若開）'],
+  ['mcp-server-task','elicitation','owns','持有（若開）']
+];
+
+/* approximate collapsed box heights for port math (collapsed = head + role) */
+var BOX_H=92;
+
+function boxRect(id){
+  var L=LAYOUT[id];
+  var el=document.querySelector('.entity[data-entity="'+id+'"]');
+  var h=el?el.offsetHeight:BOX_H;
+  return {x:L.x, y:L.y, w:BOX_W, h:h, cx:L.x+BOX_W/2, cy:L.y+h/2};
+}
+/* pick connection ports on box edges facing each other */
+function ports(a,b){
+  var dx=b.cx-a.cx, dy=b.cy-a.cy;
+  function side(r,toX,toY){
+    if(Math.abs(toX-r.cx) > Math.abs(toY-r.cy)){
+      return toX>r.cx ? {x:r.x+r.w, y:r.cy} : {x:r.x, y:r.cy};
+    } else {
+      return toY>r.cy ? {x:r.cx, y:r.y+r.h} : {x:r.cx, y:r.y};
+    }
+  }
+  return [side(a,b.cx,b.cy), side(b,a.cx,a.cy)];
+}
+
+function buildEntities(){
+  var host=document.getElementById('canvas1');
+  Object.keys(ENTITIES).forEach(function(id){
+    var e=ENTITIES[id], L=LAYOUT[id];
+    var box=document.createElement('div');
+    box.className='entity '+e.cluster+(id==='tool-executor'?' boundary':'');
+    box.setAttribute('data-entity',id);
+    box.setAttribute('data-detail',id);
+    box.setAttribute('role','button');
+    box.setAttribute('tabindex','0');
+    box.style.left=L.x+'px'; box.style.top=L.y+'px';
+    box.innerHTML=
+      '<span class="etag"></span>'+
+      '<div class="ehead">'+
+        '<span class="ename">'+e.name.replace(/（.*?）/,'')+'</span>'+
+      '</div>'+
+      '<div class="erole">'+e.purpose+'</div>';
+    host.appendChild(box);
+  });
+}
+
+function buildEdges(){
+  var svg=document.getElementById('edges1');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  EDGES.forEach(function(e,i){
+    var from=e[0], to=e[1], kind=e[2], label=e[3];
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    var tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+    var d, lx, ly;
+    if(from===to){
+      var r=boxRect(from);
+      var sx=r.x+r.w-26, sy=r.y, ex=r.x+r.w-6, ey=r.y;
+      d='M '+sx+' '+sy+' C '+(sx)+' '+(sy-26)+' '+(ex)+' '+(ey-26)+' '+ex+' '+ey;
+      lx=(sx+ex)/2; ly=sy-30;
+    } else {
+      var a=boxRect(from), b=boxRect(to);
+      var p=ports(a,b);
+      var f=p[0], t=p[1];
+      var mx=(f.x+t.x)/2, my=(f.y+t.y)/2;
+      var dx=t.x-f.x, dy=t.y-f.y;
+      var len=Math.sqrt(dx*dx+dy*dy)||1;
+      var px=-dy/len, py=dx/len;
+      var bend=Math.min(40, len*0.12);
+      var cx=mx+px*bend, cy=my+py*bend;
+      d='M '+f.x+' '+f.y+' Q '+cx+' '+cy+' '+t.x+' '+t.y;
+      lx=0.25*f.x+0.5*cx+0.25*t.x; ly=0.25*f.y+0.5*cy+0.25*t.y;
+    }
+    path.setAttribute('d',d);
+    path.setAttribute('class','edge-path');
+    path.setAttribute('data-edge',i);
+    path.setAttribute('data-from',from); path.setAttribute('data-to',to); path.setAttribute('data-kind',kind);
+    path.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+    svg.appendChild(path);
+    var tw=label.length*7.2+8;
+    bg.setAttribute('x',lx-tw/2); bg.setAttribute('y',ly-9);
+    bg.setAttribute('width',tw); bg.setAttribute('height',16);
+    bg.setAttribute('rx',4); bg.setAttribute('class','edge-label-bg'); bg.setAttribute('data-elabel',i);
+    svg.appendChild(bg);
+    tx.setAttribute('x',lx); tx.setAttribute('y',ly+3);
+    tx.setAttribute('text-anchor','middle'); tx.setAttribute('class','edge-label'); tx.setAttribute('data-elabel',i);
+    tx.textContent=label;
+    svg.appendChild(tx);
+  });
+}
+
+/* focus+context: highlight one entity's edges, dim the rest */
+function focusEntity(id){
+  var paths=document.querySelectorAll('.edge-path');
+  paths.forEach(function(p){
+    var on = p.getAttribute('data-from')===id || p.getAttribute('data-to')===id;
+    p.classList.toggle('hot',on);
+    p.classList.toggle('dim',!on);
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', on
+      ? (kind==='isa'?'url(#tri-isa-hot)':'url(#arrow-hot)')
+      : (kind==='isa'?'url(#tri-isa)':'url(#arrow)'));
+  });
+  EDGES.forEach(function(e,i){
+    var on = e[0]===id || e[1]===id;
+    document.querySelectorAll('[data-elabel="'+i+'"]').forEach(function(n){
+      n.classList.toggle('hot',on); n.classList.toggle('dim',!on);
+    });
+  });
+  document.querySelectorAll('.entity').forEach(function(el){
+    el.classList.toggle('lit', el.getAttribute('data-entity')===id);
+  });
+}
+function clearFocus(){
+  document.querySelectorAll('.edge-path').forEach(function(p){
+    p.classList.remove('hot','dim');
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+  });
+  document.querySelectorAll('.edge-label,.edge-label-bg').forEach(function(n){n.classList.remove('hot','dim');});
+  document.querySelectorAll('.entity.lit').forEach(function(el){el.classList.remove('lit');});
+}
+
+/* ============================================================
+   VIEW 2 — sequence diagram layout (一個 MCP 工具呼叫走一遍)
+   ============================================================ */
+var SEQ_ACTORS = [
+  {id:'tool-executor',   label:'tool_executor',  sub:'tool_executor（邊界）', x:95},
+  {id:'handle-fn',       label:'handle_function_call', sub:'model_tools',     x:355},
+  {id:'mcp-server-task', label:'MCPServerTask',  sub:'mcp_tool',             x:620},
+  {id:'reconnect',       label:'重連 / 韌性',    sub:'mcp_tool',             x:870}
+];
+var SEQ_MSGS = [
+  ['tool-executor','handle-fn', '1','派發一個 MCP 工具呼叫',120,'fwd'],
+  ['handle-fn','mcp-server-task','2','分流到對應 server 的 handler',164,'fwd'],
+  ['mcp-server-task','mcp-server-task','3','session.call_tool（送到伺服器）',208,'self'],
+  ['mcp-server-task','reconnect','4','若 auth／session 失效',300,'fwd'],
+  ['reconnect','reconnect',     '5','恢復並重試一次（或重連放棄）',344,'self'],
+  ['reconnect','mcp-server-task','6','回 ready 或 needs_reauth',404,'ret'],
+  ['mcp-server-task','handle-fn','7','工具結果（content / 錯誤）',444,'ret'],
+  ['handle-fn','tool-executor','8','結果接回這一輪',484,'ret']
+];
+function actorX(id){for(var i=0;i<SEQ_ACTORS.length;i++){if(SEQ_ACTORS[i].id===id)return SEQ_ACTORS[i].x;}return 0;}
+
+function buildSequence(){
+  var holder=document.getElementById('seq1');
+  var svg=document.getElementById('seqsvg');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  Array.prototype.slice.call(holder.querySelectorAll('.seq-actorbox,.seq-step')).forEach(function(n){n.remove();});
+  var topY=78, botY=520;
+  SEQ_ACTORS.forEach(function(a){
+    var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',a.x); line.setAttribute('y1',topY);
+    line.setAttribute('x2',a.x); line.setAttribute('y2',botY);
+    line.setAttribute('class','seq-lifeline');
+    svg.appendChild(line);
+    var box=document.createElement('div');
+    box.className='seq-actorbox'; box.style.left=a.x+'px'; box.style.top='18px';
+    box.setAttribute('data-entity',a.id);
+    box.innerHTML='<div class="an">'+a.label+'</div><div class="ar">'+a.sub+'</div>';
+    var col=CLUSTER_COLOR[(ENTITIES[a.id]||{}).cluster]||'#4554d6';
+    box.style.borderTopColor=col; box.style.borderTopWidth='3px';
+    holder.appendChild(box);
+  });
+  SEQ_MSGS.forEach(function(m){
+    var x1=actorX(m[0]), x2=actorX(m[1]), y=m[4], kind=m[5];
+    var cls=kind==='ret'?'ret':kind==='self'?'self':'';
+    var mk=kind==='ret'?'url(#seqarrow-ret)':kind==='self'?'url(#seqarrow-self)':'url(#seqarrow)';
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var d;
+    if(kind==='self'){ d='M '+x1+' '+y+' h 46 v 26 h -46'; }
+    else { d='M '+x1+' '+y+' L '+x2+' '+y; }
+    path.setAttribute('d',d); path.setAttribute('class','seq-arrow '+cls);
+    path.setAttribute('marker-end',mk);
+    svg.appendChild(path);
+    var numt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    numt.setAttribute('x',(kind==='self'? x1+10 : Math.min(x1,x2)+8));
+    numt.setAttribute('y',y-6); numt.setAttribute('class','seq-msgnum');
+    numt.textContent=m[2];
+    svg.appendChild(numt);
+    var lx=kind==='self'? x1+54 : (x1+x2)/2;
+    var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lt.setAttribute('x',lx); lt.setAttribute('y', kind==='self'? y+18 : y-6);
+    lt.setAttribute('text-anchor', kind==='self'?'start':'middle');
+    lt.setAttribute('class','seq-msglabel'); lt.textContent=m[3];
+    svg.appendChild(lt);
+    var target = kind==='ret'? m[0] : m[1];
+    if(kind==='self') target=m[0];
+    var step=document.createElement('div');
+    step.className='seq-step'; step.setAttribute('data-entity',target);
+    var hx=Math.min(x1,x2), hw=Math.abs(x2-x1)||60;
+    step.style.left=(hx-4)+'px'; step.style.top=(y-14)+'px';
+    step.style.width=(hw+8)+'px'; step.style.height=(kind==='self'?40:22)+'px';
+    step.title='步驟 '+m[2]+'：'+m[3];
+    holder.appendChild(step);
+  });
+}
+
+/* ============================================================
+   DETAIL PANEL
+   ============================================================ */
+var scrim=document.getElementById('scrim');
+var panel=document.getElementById('panel');
+var pbody=document.getElementById('pbody');
+var KIND_LABEL={owns:'持有（owns）',calls:'呼叫（calls）',rw:'讀寫（reads-writes）',isa:'註冊／提供（registers）'};
+var KIND_CLASS={owns:'r-owns',calls:'r-calls',rw:'r-rw',isa:'r-isa'};
+
+function openPanel(id){
+  var e=ENTITIES[id]; if(!e)return;
+  document.getElementById('pname').textContent=e.name;
+  document.getElementById('pstereo').textContent=e.stereo;
+  var col=CLUSTER_COLOR[e.cluster]||'#4554d6';
+  document.getElementById('pmark').style.background=col;
+  var html='';
+  html+='<p class="role-line">'+e.role+'</p>';
+  html+='<h4>它是什麼 / 做什麼</h4><p>'+e.summary+'</p>';
+  html+='<h4>關鍵方法 / 欄位</h4><ul class="keymethods">';
+  e.methods.forEach(function(m){
+    html+='<li><span class="mono">'+m[0]+'</span>';
+    if(m[1] && m[1]!=='—'){html+=' '+refChip(m[1]);}
+    html+='</li>';
+  });
+  html+='</ul>';
+  html+='<h4>跟鄰居的關係</h4><ul class="rels">';
+  e.rels.forEach(function(r){
+    html+='<li class="'+(KIND_CLASS[r[0]]||'')+'"><span class="relverb">'+(KIND_LABEL[r[0]]||r[0])+'</span>：'+r[2]+'</li>';
+  });
+  html+='</ul>';
+  if(e.gotcha){
+    html+='<h4>限制 / 容易誤解的地方</h4><div class="gotcha"><p>'+e.gotcha+'</p></div>';
+  }
+  if(e.page){
+    html+='<div style="margin-top:18px"><a class="panel-detaillink" href="'+e.page+'">細節頁：'+e.page+' →</a></div>';
+  } else {
+    html+='<div style="margin-top:18px"><span class="panel-detaillink none">（工具與 MCP 子系統內，無另開細節頁）</span></div>';
+  }
+  pbody.innerHTML=html;
+  pbody.scrollTop=0;
+  panel.classList.add('open'); scrim.classList.add('open');
+  panel.setAttribute('aria-hidden','false');
+  document.querySelectorAll('.entity.sel,.seq-actorbox.sel,.seq-step.sel').forEach(function(n){n.classList.remove('sel');});
+  document.querySelectorAll('[data-entity="'+id+'"]').forEach(function(n){n.classList.add('sel');});
+  focusEntity(id);
+}
+function closePanel(){
+  panel.classList.remove('open'); scrim.classList.remove('open');
+  panel.setAttribute('aria-hidden','true');
+  document.querySelectorAll('.sel').forEach(function(n){n.classList.remove('sel');});
+  clearFocus();
+}
+document.getElementById('pclose').addEventListener('click',closePanel);
+scrim.addEventListener('click',closePanel);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePanel();});
+
+/* ============================================================
+   INTERACTIONS — detail open, hover focus
+   ============================================================ */
+document.addEventListener('click',function(ev){
+  var det=ev.target.closest('[data-detail]');
+  if(det){ openPanel(det.getAttribute('data-detail')); ev.stopPropagation(); return; }
+  var seqt=ev.target.closest('.seq-actorbox,.seq-step');
+  if(seqt){ openPanel(seqt.getAttribute('data-entity')); return; }
+});
+
+/* keyboard: Enter / Space on a focused card opens the drawer */
+document.addEventListener('keydown',function(ev){
+  if(ev.key!=='Enter' && ev.key!==' ') return;
+  var card=ev.target.closest && ev.target.closest('.entity[data-detail]');
+  if(card){ ev.preventDefault(); openPanel(card.getAttribute('data-detail')); }
+});
+
+/* hover an entity → focus its edges */
+document.addEventListener('mouseover',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){ focusEntity(card.getAttribute('data-entity')); }
+});
+document.addEventListener('mouseout',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){
+    var to=ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('.entity');
+    if(!to) clearFocus();
+  }
+});
+
+/* ============================================================
+   TABS + responsive scaling
+   ============================================================ */
+var tabs=document.querySelectorAll('.tab');
+tabs.forEach(function(tb){
+  tb.addEventListener('click',function(){
+    tabs.forEach(function(x){x.classList.remove('active'); x.setAttribute('aria-selected','false');});
+    tb.classList.add('active'); tb.setAttribute('aria-selected','true');
+    var v=tb.getAttribute('data-view');
+    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+    document.getElementById('view-'+v).classList.add('active');
+    if(v==='v1'){ requestAnimationFrame(function(){buildEdges(); fitCanvas();}); }
+  });
+});
+
+/* big whiteboard: no shrink-to-fit. The .canvas wrapper scrolls in both
+   directions; the page itself stays put. */
+function fitCanvas(){
+  var inner=document.getElementById('canvas1');
+  if(!inner)return;
+  inner.style.transform='none';
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+buildConcepts();
+hydrateRefs(document);   // hydrate static refs in the caveat note
+buildEntities();
+buildEdges();
+buildSequence();
+fitCanvas();
+</script>
+
+</body>
+</html>

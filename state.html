@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes 架構解說 · State</title>
+<style>
+/* ============================================================
+   SHARED DESIGN SYSTEM  (carried from gateway.html verbatim)
+   ============================================================ */
+:root{
+  --bg:        #f7f8fa;
+  --bg-card:   #ffffff;
+  --bg-sunken: #f0f2f5;
+  --ink:       #1c2330;
+  --ink-soft:  #4a5468;
+  --ink-faint: #8b94a6;
+  --line:      #e2e6ec;
+  --line-soft: #eceff3;
+  --accent:    #4554d6;       /* indigo accent */
+  --accent-ink:#3340b8;
+  --accent-bg: #eef0fd;
+  --accent-bg2:#e4e7fb;
+  --warn-bg:   #fff8ec;
+  --warn-line: #f0dcb0;
+  --warn-ink:  #8a6418;
+  --ok:        #2f9e6f;
+  /* cluster accent tints (informal map) */
+  --c-platform:#2f7fd1; --c-platform-bg:#eaf3fc;
+  --c-core:    #6048c4; --c-core-bg:#efebfb;
+  --c-tools:   #1f9e88; --c-tools-bg:#e6f5f1;
+  --c-provider:#c4682f; --c-provider-bg:#fbf0e7;
+  --c-persist: #b0407a; --c-persist-bg:#fbe9f2;
+  --c-learn:   #6a8f1f; --c-learn-bg:#f1f6e4;
+  --radius:    10px;
+  --radius-sm: 6px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+          "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif;
+  --shadow: 0 1px 2px rgba(20,28,46,.04), 0 2px 8px rgba(20,28,46,.05);
+  --shadow-lift: 0 4px 16px rgba(20,28,46,.10);
+  --maxw: 1180px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); line-height:1.7;
+  font-size:16px; -webkit-font-smoothing:antialiased;
+}
+code, .mono{font-family:var(--mono); font-size:.86em}
+a{color:var(--accent-ink); text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{line-height:1.3; font-weight:680}
+h2{font-size:1.4rem; margin:0 0 .2em}
+h3{font-size:1.06rem; margin:0 0 .3em}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+/* ---- file:line reference chip + repo link (shared) ---- */
+.ref{
+  font-family:var(--mono); font-size:.8em;
+  background:var(--bg-sunken); color:var(--ink-soft);
+  border:1px solid var(--line); border-radius:5px;
+  padding:.05em .42em; white-space:nowrap; display:inline-block;
+}
+.ref b{color:var(--accent-ink); font-weight:600}
+a.ref{cursor:pointer; transition:background .12s, border-color .12s}
+a.ref:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+a.ref::after{content:" \2197"; font-size:.85em; color:var(--ink-faint)}
+a.ref:hover::after{color:var(--accent-ink)}
+
+/* ---- persistent top nav (shared) ---- */
+.topnav{
+  position:sticky; top:0; z-index:80;
+  background:rgba(247,248,250,.88); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topnav .wrap{display:flex; align-items:center; gap:6px; height:56px; flex-wrap:wrap}
+.brand{font-weight:720; letter-spacing:.2px; margin-right:10px; white-space:nowrap}
+.brand small{color:var(--ink-faint); font-weight:500; font-size:.7rem; margin-left:6px}
+.navlinks{display:flex; gap:2px; flex-wrap:wrap}
+.navlinks a{
+  color:var(--ink-soft); font-size:.85rem; padding:5px 11px;
+  border-radius:7px; white-space:nowrap;
+}
+.navlinks a:hover{background:var(--bg-sunken); text-decoration:none}
+.navlinks a.active{background:var(--accent-bg); color:var(--accent-ink); font-weight:600}
+
+.section{margin:40px 0}
+/* full-bleed: break a block out of the readable column to span the viewport
+   width. used by the diagram section so the wide whiteboard fits with little
+   or no horizontal scroll. prose sections keep the ~1180px column. */
+.fullbleed{
+  width:96vw;
+  margin-left:calc(50% - 48vw);
+  margin-right:calc(50% - 48vw);
+}
+.fullbleed .bleed-inner{max-width:none; padding:0 24px}
+.eyebrow{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 6px;
+}
+.lead{color:var(--ink-soft); max-width:76ch}
+
+/* ---- breadcrumb (detail page) ---- */
+.crumb{
+  font-size:.84rem; color:var(--ink-faint); margin:0 0 4px;
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+}
+.crumb a{color:var(--ink-soft); font-weight:600}
+.crumb .sep{color:var(--ink-faint)}
+.crumb .here{color:var(--accent-ink); font-weight:700}
+
+/* ---- snapshot stamp (shared) ---- */
+.stamp{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:.78rem;
+  background:var(--bg-card); border:1px solid var(--line);
+  border-radius:99px; padding:5px 14px; color:var(--ink-soft);
+  box-shadow:var(--shadow);
+}
+.stamp .dot{width:7px; height:7px; border-radius:50%; background:var(--ok)}
+.stamp b{color:var(--ink); font-weight:600}
+
+/* ---- footer (shared) ---- */
+footer{
+  border-top:1px solid var(--line); margin-top:60px;
+  padding:26px 0 50px; color:var(--ink-faint); font-size:.8rem;
+}
+footer .wrap{display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; align-items:center}
+footer .mono{font-family:var(--mono)}
+
+/* hero */
+.hero{padding:30px 0 8px}
+.hero h1{font-size:2.05rem; margin:.1em 0 .35em; letter-spacing:-.01em}
+.hero .sub{color:var(--ink-soft); font-size:1.04rem; max-width:74ch; margin:0 0 18px}
+.snapshot-line{color:var(--ink-faint); font-size:.84rem; margin-top:12px; max-width:72ch}
+
+/* ============================================================
+   CONCEPTS SECTION — ubiquitous language glossary
+   ============================================================ */
+.concepts{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  padding:26px 28px 30px;
+}
+.concepts .intro{color:var(--ink-soft); max-width:78ch; margin:0 0 4px}
+.concept-groups{
+  display:grid; grid-template-columns:repeat(2,1fr); gap:22px 30px; margin-top:22px;
+}
+@media (max-width:760px){ .concept-groups{grid-template-columns:1fr} }
+.cgroup h3{
+  font-size:.96rem; margin:0 0 10px; display:flex; align-items:center; gap:8px;
+}
+.cgroup h3 .gdot{width:10px; height:10px; border-radius:3px; flex:0 0 auto}
+.glist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px}
+.glist li{padding-left:2px}
+.gterm{font-weight:680; color:var(--ink); font-size:.92rem}
+.gterm .en{font-family:var(--mono); font-size:.78rem; font-weight:600; color:var(--accent-ink); margin-left:5px}
+.gdef{color:var(--ink-soft); font-size:.86rem; line-height:1.55; margin-top:2px}
+.gdef .ref{margin-left:4px}
+.cgroup.g-store h3 .gdot{background:var(--c-persist)}
+.cgroup.g-search h3 .gdot{background:var(--c-core)}
+.cgroup.g-files h3 .gdot{background:var(--c-learn)}
+
+/* ============================================================
+   VIEW TABS
+   ============================================================ */
+.tabs{display:flex; gap:6px; margin:6px 0 6px; flex-wrap:wrap; align-items:center}
+.tab{
+  font-family:var(--sans); font-size:.9rem; font-weight:600;
+  color:var(--ink-soft); background:var(--bg-card);
+  border:1px solid var(--line); border-radius:9px;
+  padding:8px 16px; cursor:pointer; transition:all .14s;
+}
+.tab:hover{background:var(--bg-sunken); color:var(--ink)}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+.tab .tnote{font-weight:500; font-size:.78rem; opacity:.8; margin-left:6px}
+.tab.active .tnote{opacity:.9}
+/* quiet sub-label: the cards in the diagram are clickable */
+.clickhint{
+  color:var(--ink-faint); font-size:.8rem; font-weight:500;
+  margin-left:4px; display:inline-flex; align-items:center; gap:5px;
+}
+.clickhint::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--accent); opacity:.55; flex:0 0 auto;
+}
+.view{display:none}
+.view.active{display:block}
+.viewhint{color:var(--ink-faint); font-size:.85rem; margin:4px 0 14px}
+.viewhint b{color:var(--ink-soft)}
+
+/* ============================================================
+   VIEW 1 — informal class diagram (entity map)
+   ============================================================ */
+.diagram-shell{position:relative}
+.canvas{
+  position:relative; width:100%;
+  border:1px solid var(--line); border-radius:14px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(120,130,150,.13) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--bg-card);
+  box-shadow:var(--shadow);
+  /* roomy whiteboard: the canvas itself scrolls in both directions, page stays put */
+  overflow:auto; -webkit-overflow-scrolling:touch;
+  max-height:80vh;
+}
+/* fixed design coordinate space — big whiteboard, no shrink-to-fit */
+.canvas-inner{position:relative; width:1500px; height:880px; margin:0}
+.svg-edges{position:absolute; inset:0; width:1500px; height:880px; pointer-events:none; z-index:1}
+/* edges DE-EMPHASIZED by default */
+.edge-path{fill:none; stroke:#d2d8e2; stroke-width:1.2; transition:stroke .15s, stroke-width .15s, opacity .15s}
+.edge-path.hot{stroke:var(--accent); stroke-width:2.4; opacity:1}
+.edge-path.dim{opacity:.32}
+.edge-label{
+  font-family:var(--mono); font-size:11px; fill:var(--ink-faint);
+  transition:fill .15s, opacity .15s; opacity:0;
+}
+.edge-label.hot{fill:var(--accent-ink); opacity:1}
+.edge-label.dim{opacity:0}
+.edge-label-bg{fill:var(--bg-card); opacity:0; transition:opacity .15s}
+.edge-label-bg.hot{opacity:.94}
+/* arrow markers dim by default, lit on .hot via JS marker swap */
+
+/* class boxes — compact static tiles, whole card opens the drawer */
+.entity{
+  position:absolute; z-index:2;
+  width:222px; background:var(--bg-card);
+  border:1.5px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow);
+  transition:transform .12s, box-shadow .14s, border-color .14s;
+  overflow:hidden; cursor:pointer; user-select:none;
+}
+.entity:hover{transform:translateY(-2px); box-shadow:var(--shadow-lift)}
+.entity:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.entity.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.entity.lit{box-shadow:0 0 0 2px var(--accent-bg2), var(--shadow-lift)}
+.entity .ehead{
+  padding:10px 13px 4px; display:flex; align-items:center; gap:7px;
+}
+.entity .ename{font-weight:700; font-size:.95rem; letter-spacing:.1px}
+.entity .erole{
+  padding:0 13px 11px; font-size:.78rem; color:var(--ink-soft);
+  line-height:1.45;
+}
+.entity .etag{
+  position:absolute; top:0; left:0; width:5px; height:100%;
+}
+/* cluster colourings */
+.entity.platform{border-color:#cfe1f4}
+.entity.platform .etag{background:var(--c-platform)}
+.entity.platform .ename{color:var(--c-platform)}
+.entity.core{border-color:#dcd5f4}
+.entity.core .etag{background:var(--c-core)}
+.entity.core .ename{color:var(--c-core)}
+.entity.tools{border-color:#cdeae3}
+.entity.tools .etag{background:var(--c-tools)}
+.entity.tools .ename{color:var(--c-tools)}
+.entity.provider{border-color:#f0ddca}
+.entity.provider .etag{background:var(--c-provider)}
+.entity.provider .ename{color:var(--c-provider)}
+.entity.persist{border-color:#f4d3e3}
+.entity.persist .etag{background:var(--c-persist)}
+.entity.persist .ename{color:var(--c-persist)}
+.entity.learn{border-color:#e3edca}
+.entity.learn .etag{background:var(--c-learn)}
+.entity.learn .ename{color:var(--c-learn)}
+/* boundary entity (owned by another detail page) — dashed edge */
+.entity.boundary{border-style:dashed; opacity:.96}
+.entity.boundary .erole{color:var(--ink-faint)}
+
+/* cluster labels (informal hand-drawn group hint) */
+.cluster-label{
+  position:absolute; z-index:1; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:600;
+  border:1px dashed var(--line); border-radius:99px;
+  padding:2px 11px; background:rgba(255,255,255,.6);
+}
+
+/* legend + toolbar */
+.diagram-toolbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:14px 0 4px}
+.minibtn{
+  font-size:.78rem; font-weight:600; color:var(--ink-soft);
+  background:var(--bg-card); border:1px solid var(--line); border-radius:8px;
+  padding:5px 12px; cursor:pointer; transition:all .12s;
+}
+.minibtn:hover{background:var(--bg-sunken); color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:14px; font-size:.8rem; color:var(--ink-soft)}
+.legend .li{display:inline-flex; align-items:center; gap:6px}
+.legend .swatch{width:24px; height:0; border-top-width:2px; border-top-style:solid}
+.legend .sw-owns{border-color:var(--c-core)}
+.legend .sw-calls{border-color:#9aa4b6}
+.legend .sw-rw{border-color:var(--c-persist); border-top-style:dashed}
+.legend .sw-isa{border-color:#9aa4b6; border-top-style:dotted}
+.legend .dotc{width:11px;height:11px;border-radius:3px}
+
+/* ============================================================
+   VIEW 2 — informal sequence diagram
+   ============================================================ */
+.seq-shell{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  overflow-x:auto;
+}
+.seq-inner{position:relative; width:1040px; min-width:1040px; height:560px; margin:0 auto}
+.seq-svg{position:absolute; inset:0; width:1040px; height:560px}
+.seq-lifeline{stroke:#c4ccd9; stroke-width:1.4; stroke-dasharray:4 4}
+.seq-arrow{stroke:#7d8aa0; stroke-width:1.6; fill:none}
+.seq-arrow.ret{stroke:#b0407a; stroke-dasharray:5 4}
+.seq-arrow.self{stroke:#6a8f1f}
+.seq-msglabel{font-family:var(--sans); font-size:12px; fill:var(--ink)}
+.seq-msgnum{font-family:var(--mono); font-size:11px; fill:var(--accent); font-weight:700}
+.seq-actorbox{
+  position:absolute; transform:translateX(-50%);
+  width:150px; text-align:center; cursor:pointer; z-index:3;
+  border-radius:10px; padding:8px 5px; box-shadow:var(--shadow);
+  border:1.5px solid var(--line); background:var(--bg-card);
+  transition:transform .12s, box-shadow .14s;
+}
+.seq-actorbox:hover{transform:translateX(-50%) translateY(-2px); box-shadow:var(--shadow-lift)}
+.seq-actorbox.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.seq-actorbox .an{font-weight:700; font-size:.82rem}
+.seq-actorbox .ar{font-size:.66rem; color:var(--ink-faint); font-family:var(--mono)}
+.seq-step{
+  position:absolute; z-index:3; cursor:pointer;
+  border-radius:6px; transition:background .12s;
+}
+.seq-step:hover{background:rgba(69,84,214,.08)}
+.seq-step.sel{background:rgba(69,84,214,.13); outline:1.5px solid var(--accent-bg2)}
+
+/* ============================================================
+   DETAIL PANEL (shared by both views) — slide-in side panel
+   ============================================================ */
+.panel-scrim{
+  position:fixed; inset:0; background:rgba(20,28,46,.34);
+  z-index:90; opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.panel-scrim.open{opacity:1; pointer-events:auto}
+.panel{
+  position:fixed; top:0; right:0; height:100%; width:min(540px,94vw);
+  background:var(--bg-card); z-index:95; box-shadow:-8px 0 30px rgba(20,28,46,.16);
+  transform:translateX(100%); transition:transform .24s cubic-bezier(.4,.0,.2,1);
+  display:flex; flex-direction:column;
+}
+.panel.open{transform:translateX(0)}
+.panel-head{
+  padding:18px 22px 14px; border-bottom:1px solid var(--line);
+  display:flex; align-items:flex-start; gap:12px;
+}
+.panel-head .pmark{
+  flex:0 0 auto; width:10px; height:38px; border-radius:4px; margin-top:2px;
+  background:var(--accent);
+}
+.panel-head .ph-t{flex:1 1 auto; min-width:0}
+.panel-head .ph-name{font-size:1.18rem; font-weight:720; letter-spacing:.1px}
+.panel-head .ph-stereo{font-family:var(--mono); font-size:.72rem; color:var(--ink-faint); margin-top:2px}
+.panel-close{
+  flex:0 0 auto; cursor:pointer; border:1px solid var(--line);
+  background:var(--bg-sunken); border-radius:8px; width:32px; height:32px;
+  font-size:1.1rem; color:var(--ink-soft); line-height:1;
+}
+.panel-close:hover{background:var(--line-soft); color:var(--ink)}
+.panel-body{padding:18px 22px 40px; overflow-y:auto; flex:1 1 auto}
+.panel-body h4{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); margin:20px 0 7px; font-weight:600;
+}
+.panel-body h4:first-child{margin-top:2px}
+.panel-body p{margin:.55em 0; color:var(--ink-soft); font-size:.92rem}
+.panel-body .role-line{font-size:1rem; color:var(--ink); margin:2px 0 4px}
+.panel-body ul.keymethods{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:7px}
+.panel-body ul.keymethods li{font-size:.86rem; color:var(--ink-soft)}
+.panel-body ul.rels{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:6px}
+.panel-body ul.rels li{font-size:.88rem; color:var(--ink-soft); padding-left:18px; position:relative}
+.panel-body ul.rels li::before{
+  content:""; position:absolute; left:0; top:.62em; width:9px; height:9px;
+  border-radius:2px; background:var(--ink-faint);
+}
+.panel-body ul.rels li.r-owns::before{background:var(--c-core)}
+.panel-body ul.rels li.r-calls::before{background:#9aa4b6}
+.panel-body ul.rels li.r-rw::before{background:var(--c-persist)}
+.panel-body ul.rels li.r-isa::before{background:var(--c-platform)}
+.panel-body .relverb{font-weight:700; color:var(--ink)}
+.gotcha{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:10px; padding:13px 16px; margin:10px 0 4px;
+}
+.gotcha p{color:#5f4d22; margin:.3em 0; font-size:.88rem}
+.panel-detaillink{
+  display:inline-flex; align-items:center; gap:6px; margin-top:6px;
+  font-size:.86rem; font-weight:600; color:var(--accent-ink);
+  background:var(--accent-bg); padding:6px 14px; border-radius:8px;
+}
+.panel-detaillink:hover{background:var(--accent-bg2); text-decoration:none}
+.panel-detaillink.none{background:var(--bg-sunken); color:var(--ink-faint); font-weight:500; cursor:default}
+
+/* honest note callout */
+.note{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:var(--radius); padding:18px 22px; margin:18px 0;
+}
+.note .eyebrow{color:var(--warn-ink)}
+.note p{margin:.4em 0; color:#5f4d22}
+
+/* related cross-links */
+.related{
+  border:1px solid var(--line); border-radius:14px; background:var(--bg-card);
+  box-shadow:var(--shadow); padding:22px 24px;
+}
+.related h3{margin:0 0 4px}
+.relgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px}
+@media (max-width:680px){ .relgrid{grid-template-columns:1fr} }
+.relcard{
+  display:block; border:1px solid var(--line); border-radius:10px;
+  padding:13px 15px; background:var(--bg-sunken); transition:all .12s;
+}
+.relcard:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+.relcard .rk{font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+.relcard .rt{font-weight:680; color:var(--ink); margin-top:2px}
+.relcard .rd{font-size:.82rem; color:var(--ink-soft); margin-top:3px}
+
+/* responsive */
+.scaler{overflow-x:auto; -webkit-overflow-scrolling:touch}
+@media (max-width:680px){
+  .hero h1{font-size:1.6rem}
+  .topnav .wrap{height:auto; padding-top:8px; padding-bottom:8px}
+  .panel{width:100vw}
+  .concepts{padding:20px 18px 22px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ PERSISTENT NAV (shared, State active) ============ -->
+<nav class="topnav">
+  <div class="wrap">
+    <span class="brand">Hermes 架構解說<small>v0.17.0 · State</small></span>
+    <div class="navlinks">
+      <a href="index.html">總覽</a>
+      <a href="gateway.html">Gateway</a>
+      <a href="agent-learning.html">Agent 與學習</a>
+      <a href="tools-mcp.html">Tools 與 MCP</a>
+      <a href="providers.html">Providers</a>
+      <a href="state.html" class="active">State</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <p class="crumb">
+      <a href="index.html">總覽</a>
+      <span class="sep">/</span>
+      <span class="here">State 與持久層</span>
+      <span class="sep">·</span>
+      <span>你在這：放大看「會話、訊息、記憶、技能這些狀態存在哪、怎麼存」這一段</span>
+    </p>
+    <p class="eyebrow">狀態的家 · 一輪講完後留下什麼、留在哪</p>
+    <h1>State 與持久層：會話與訊息進 SQLite，記憶與技能是檔案，全都在 <span class="mono">~/.hermes/</span></h1>
+    <p class="sub">
+      一輪對話跑完，總要把東西留下來。Hermes 的狀態分兩種落地方式：會話與訊息寫進一個 SQLite 資料庫（<code>SessionDB</code>，還帶全文檢索），記憶與技能則是 <code>~/.hermes/</code> 底下的純文字檔。這頁把這層拆開，看每樣狀態存在哪、用什麼存、搬走要付多少成本。
+    </p>
+    <span class="stamp">
+      <span class="dot"></span>
+      <span>快照 <b>Hermes v0.17.0</b> · commit <b>2a10b83</b> · <b>2026-06-22</b></span>
+    </span>
+    <p class="snapshot-line">
+      本頁所有 <span class="mono">file:line</span> 對應上面這個 commit，點開會連到 GitHub 同一個 commit 的原始碼。Hermes 發版很快，日後行號可能位移，請以類別、函式名稱為主，行號為輔。
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ CONCEPTS FIRST ============ -->
+  <section class="section" id="concepts">
+    <p class="eyebrow">先懂這些詞 · 只列持久層自己的概念</p>
+    <h2 style="margin-bottom:8px">本頁詞彙</h2>
+    <div class="concepts">
+      <p class="intro">
+        下面只列 State 這一段會用到的詞（總覽頁的共通詞不重複）。中文名後面括號是原始碼裡用的英文，每個定義都對著原始碼確認過，點 <span class="mono">file:line</span> 可以跳到 GitHub 看出處。
+      </p>
+      <div class="concept-groups" id="conceptGroups"><!-- injected by JS --></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ TABS (full-bleed whiteboard) ============ -->
+<section class="section fullbleed" id="views">
+  <div class="bleed-inner">
+    <div class="wrap">
+      <h2 style="margin-bottom:6px">State 子系統的實體與關係</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-view="v1" role="tab" aria-selected="true">
+          視角一 · 實體圖<span class="tnote">class diagram</span>
+        </button>
+        <button class="tab" data-view="v2" role="tab" aria-selected="false">
+          視角二 · 一輪講完後狀態怎麼落地<span class="tnote">sequence diagram</span>
+        </button>
+        <span class="clickhint">點任一張卡片，右側看完整說明</span>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 1 ===================== -->
+    <div class="view active" id="view-v1" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">這些方塊是 State 子系統裡真實存在的「東西」。左邊是 <b>GatewayRunner</b>（狀態的寫入者，細節在 Gateway 頁）當邊界；中間是 <b>SessionDB</b> 這個 SQLite 持久層，下面掛著它的兩張全文檢索表；右邊是 <code>~/.hermes/</code> 狀態家目錄底下的純文字檔（記憶、技能），它們的產生者在「Agent 與學習」頁。每個方塊只標名字和一句目的，<b>點方塊</b>就從右側看完整說明（角色、關鍵方法、關係、限制）。<b>把游標移到方塊上</b>，只會點亮它牽到的關係線，其餘變淡。畫板比視窗大時，可在框內捲動。</p>
+
+      <div class="diagram-toolbar">
+        <div class="legend">
+          <span class="li"><span class="swatch sw-owns"></span>持有（owns）</span>
+          <span class="li"><span class="swatch sw-calls"></span>呼叫（calls）</span>
+          <span class="li"><span class="swatch sw-rw"></span>讀寫（reads-writes）</span>
+          <span class="li"><span class="swatch sw-isa"></span>同步 / 索引（feeds）</span>
+          <span class="li"><span class="dotc" style="background:var(--c-core)"></span>寫入者邊界</span>
+          <span class="li"><span class="dotc" style="background:var(--c-persist)"></span>SQLite 持久層</span>
+          <span class="li"><span class="dotc" style="background:var(--c-learn)"></span>檔案狀態（~/.hermes/）</span>
+        </div>
+      </div>
+      </div><!-- /.wrap (view-v1 text column) -->
+
+      <div class="diagram-shell scaler">
+        <div class="canvas">
+          <div class="canvas-inner" id="canvas1">
+            <svg class="svg-edges" viewBox="0 0 1500 880" preserveAspectRatio="none" id="edges1">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#d2d8e2" stroke-width="1.4"/>
+                </marker>
+                <marker id="arrow-hot" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#4554d6" stroke-width="1.6"/>
+                </marker>
+                <marker id="tri-isa" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#d2d8e2" stroke-width="1.2"/>
+                </marker>
+                <marker id="tri-isa-hot" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#4554d6" stroke-width="1.4"/>
+                </marker>
+              </defs>
+            </svg>
+
+            <!-- cluster labels -->
+            <div class="cluster-label" style="left:40px; top:24px">寫入者邊界（細節在 Gateway 頁）</div>
+            <div class="cluster-label" style="left:560px; top:24px">SQLite 持久層</div>
+            <div class="cluster-label" style="left:560px; top:610px">全文檢索（FTS5）</div>
+            <div class="cluster-label" style="left:1130px; top:24px">檔案狀態 ~/.hermes/（產生者在 Agent 頁）</div>
+
+            <!-- ENTITY BOXES injected by JS (collapsed by default) -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 2 ===================== -->
+    <div class="view" id="view-v2" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">同一批實體當生命線（lifeline），照「狀態怎麼落地」的順序從左到右排。箭頭是時間軸上的呼叫，由上往下發生。點上方的方塊、或點任一個帶編號的訊息步驟，右側開細節。虛線回程是結果往回送。這張是次要視角，主要看的是上面的實體圖。</p>
+
+      <div class="legend" style="margin-bottom:14px">
+        <span class="li"><span class="swatch" style="border-top:2px solid #7d8aa0"></span>呼叫（往前）</span>
+        <span class="li"><span class="swatch sw-rw" style="border-color:#b0407a"></span>回傳 / 結果（往回）</span>
+        <span class="li"><span class="swatch" style="border-top:2px solid #6a8f1f"></span>自身內部動作（觸發器同步）</span>
+      </div>
+      </div><!-- /.wrap (view-v2 text column) -->
+
+      <div class="seq-shell scaler">
+        <div class="seq-inner" id="seq1">
+          <svg class="seq-svg" viewBox="0 0 1040 560" id="seqsvg">
+            <defs>
+              <marker id="seqarrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#7d8aa0" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-ret" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#b0407a" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-self" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#6a8f1f" stroke-width="1.3"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div><!-- /.bleed-inner -->
+</section>
+
+<main class="wrap">
+
+  <!-- ============ HONEST NOTE ============ -->
+  <section class="section" id="caveat">
+    <div class="note">
+      <p class="eyebrow">誠實提醒</p>
+      <p><a class="ref" data-ref="hermes_state.py:667"><b>hermes_state.py</b></a> 是個約 5.1k 行的單檔持久層，整個檔最後就一個 <code>SessionDB</code> 類別（從 <a class="ref" data-ref="hermes_state.py:667"><b>:667</b></a> 到檔尾），這一個類別塞了大約 104 個方法。換句話說，「會話、訊息、全文檢索、結構修復、倒帶、重建索引」全擠在同一個類別裡。要找某個查詢或寫入邏輯，幾乎都在這個檔內，但檔很大、方法很多，靠函式名找比靠行號可靠。</p>
+      <p>狀態的「可攜性」是分兩級的。<b>會話與訊息在 SQLite</b>（<code>state.db</code>），要搬走就是 dump 成 JSONL，成本很低；<b>記憶與技能是純文字檔</b>（<code>MEMORY.md</code> / <code>USER.md</code> 和各個 <code>SKILL.md</code>），本來就可攜，直接複製檔案就好。沒有任何狀態鎖在不透明的二進位格式裡。</p>
+      <p>所有狀態都集中在 <code>~/.hermes/</code> 這一個家目錄底下（<a class="ref" data-ref="hermes_constants.py:54"><b>get_hermes_home</b></a>，POSIX 預設 <code>~/.hermes</code>）：<code>state.db</code>、<code>memories/</code>、<code>skills/</code> 都在這裡。所以<b>備份範圍很清楚</b>。備份這個資料夾，等於備份了 Hermes 的全部狀態。可用 <code>HERMES_HOME</code> 環境變數整個搬走（profile 模式也是改這條路徑）。</p>
+      <p>一個容易誤解的點：記憶不是單一個 <code>~/.hermes/memory.md</code>，而是 <code>~/.hermes/memories/</code> 這個目錄底下的兩個 <code>§</code> 分隔檔，分別是 <code>MEMORY.md</code>（agent 自己的筆記）和 <code>USER.md</code>（agent 對使用者的認識），見 <a class="ref" data-ref="tools/memory_tool.py:55"><b>get_memory_dir</b></a>。它們在 session 開始時當成凍結快照注入系統提示。</p>
+      <p>所有 <span class="mono">file:line</span> 對應 commit <b>2a10b83</b>（2026-06-22）。發版很快，日後行號很可能位移。</p>
+    </div>
+  </section>
+
+  <!-- ============ RELATED CROSS-LINKS ============ -->
+  <section class="section" id="related">
+    <div class="related">
+      <h3>相關</h3>
+      <p class="lead">這頁停在「狀態存在哪、怎麼存」這層。往回看全景，或往旁邊看誰在寫這些狀態：</p>
+      <div class="relgrid">
+        <a class="relcard" href="index.html">
+          <div class="rk">回到上一層</div>
+          <div class="rt">總覽 →</div>
+          <div class="rd">六群實體的全景圖，持久層只是其中一塊。</div>
+        </a>
+        <a class="relcard" href="agent-learning.html">
+          <div class="rk">誰在寫這些</div>
+          <div class="rt">Agent 與學習 →</div>
+          <div class="rd">memory.md / skills 的產生者：記憶預取與回寫、技能策展都在這裡。</div>
+        </a>
+        <a class="relcard" href="gateway.html">
+          <div class="rk">誰持有 SessionDB</div>
+          <div class="rt">Gateway →</div>
+          <div class="rd">GatewayRunner 持有 SessionDB，每輪處理時靠它落地與查詢會話。</div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ DETAIL PANEL ============ -->
+<div class="panel-scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-hidden="true">
+  <div class="panel-head">
+    <div class="pmark" id="pmark"></div>
+    <div class="ph-t">
+      <div class="ph-name" id="pname">·</div>
+      <div class="ph-stereo" id="pstereo"></div>
+    </div>
+    <button class="panel-close" id="pclose" aria-label="關閉">×</button>
+  </div>
+  <div class="panel-body" id="pbody"></div>
+</aside>
+
+<!-- ============ FOOTER (shared) ============ -->
+<footer>
+  <div class="wrap">
+    <span>整理：陳展佑 Yo</span>
+    <span class="mono">Hermes v0.17.0 · commit 2a10b83 · 2026-06-22</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   REPO LINK HELPER
+   ONE helper. Every file:line in the page goes through it.
+   ============================================================ */
+var REPO_PREFIX='https://github.com/NousResearch/hermes-agent/blob/2a10b8384aa2ef0418063ca0829e491c5916fba4/';
+/* split on LAST ':' into file + line; build <prefix><file>#L<line> */
+function refURL(ref){
+  ref=String(ref).trim();
+  var i=ref.lastIndexOf(':');
+  var file=ref, line='';
+  if(i>0 && /^\d+$/.test(ref.slice(i+1))){ file=ref.slice(0,i); line=ref.slice(i+1); }
+  return REPO_PREFIX+file+(line?('#L'+line):'');
+}
+/* render a file:line ref as a clickable repo-linked chip */
+function refChip(ref){
+  if(!ref || ref==='—') return '';
+  return '<a class="ref" href="'+refURL(ref)+'" target="_blank" rel="noopener"><b>'+ref+'</b></a>';
+}
+/* hydrate any <a class="ref" data-ref="..."> placeholders in static HTML */
+function hydrateRefs(root){
+  (root||document).querySelectorAll('a.ref[data-ref]').forEach(function(a){
+    a.href=refURL(a.getAttribute('data-ref'));
+    a.target='_blank'; a.rel='noopener';
+  });
+}
+
+/* ============================================================
+   CONCEPTS DATA — state-specific ubiquitous language
+   each term: {zh, en, def, ref?}  — ref rendered via helper
+   ============================================================ */
+var CONCEPT_GROUPS=[
+  {key:'g-store', title:'存在哪、用什麼存', items:[
+    {zh:'持久層', en:'SessionDB', def:'整個 SQLite 持久層就一個類別。會話、訊息的寫入與查詢、全文檢索、結構修復、倒帶都走它。預設資料庫檔是 ~/.hermes/state.db。', ref:'hermes_state.py:667'},
+    {zh:'會話', en:'session', def:'一段對話的紀錄，有自己的 session id、來源、標題。create_session 建檔，後續的訊息都掛在這個 session 底下。', ref:'hermes_state.py:1379'},
+    {zh:'訊息', en:'message', def:'會話裡的單則訊息（含角色、內容、工具呼叫等欄位）。append_message 把一批訊息寫進 messages 表落地。', ref:'hermes_state.py:2490'},
+  ]},
+  {key:'g-search', title:'搜尋與韌性', items:[
+    {zh:'全文檢索', en:'FTS5', def:'SQLite 內建的全文索引。基底表 messages_fts 用預設 tokenizer 索引訊息內容，讓「session 搜尋」能用關鍵字找歷史。靠觸發器在訊息增刪改時自動同步。', ref:'hermes_state.py:612'},
+    {zh:'中日韓三連音', en:'CJK trigram', def:'另一張 FTS 表 messages_fts_trigram，用 trigram tokenizer 切成重疊的三字片段。預設 tokenizer 會把中文逐字拆開破壞片語，這張表讓中文等語言的子字串搜尋能正常運作。', ref:'hermes_state.py:641'},
+    {zh:'結構修復', en:'repair_state_db_schema', def:'當 state.db 的 sqlite_master 結構壞掉（連 PRAGMA 都失敗的「table 已存在」那類）時，先去重、再退而重建 FTS 索引；canonical 的 sessions / messages 資料絕不動，動手前先備份。', ref:'hermes_state.py:419'},
+    {zh:'WAL 與退場', en:'WAL fallback', def:'預設用 WAL 模式撐「多讀一寫」的併發。但 NFS / SMB / 某些 FUSE 掛載不支援 WAL 的共享記憶體協定，會丟 locking protocol 錯；這時自動退回舊的 DELETE 模式，並記一次 WARNING。', ref:'hermes_state.py:240'},
+  ]},
+  {key:'g-files', title:'檔案狀態（~/.hermes/）', items:[
+    {zh:'狀態家目錄', en:'~/.hermes/', def:'所有 per-user 狀態的家。state.db、memories/、skills/ 都在這個資料夾底下。可用 HERMES_HOME 環境變數整個搬走（profile 模式也是改這條路徑）。備份範圍 = 這個資料夾。', ref:'hermes_constants.py:54'},
+    {zh:'記憶目錄', en:'memories/', def:'~/.hermes/memories/ 底下的純文字檔（MEMORY.md = agent 筆記、USER.md = 對使用者的認識），以 § 分隔成一條條 entry。session 開始時當凍結快照注入系統提示。產生者是 Agent 頁的 MemoryManager。', ref:'tools/memory_tool.py:55'},
+    {zh:'技能目錄', en:'skills/', def:'~/.hermes/skills 底下，每個技能一個資料夾、各有一份 SKILL.md（帶 YAML frontmatter）。是純文字、可直接複製搬走。策展邏輯在 Agent 頁。', ref:'hermes_constants.py:627'},
+  ]},
+];
+
+function buildConcepts(){
+  var host=document.getElementById('conceptGroups');
+  var html='';
+  CONCEPT_GROUPS.forEach(function(g){
+    html+='<div class="cgroup '+g.key+'"><h3><span class="gdot"></span>'+g.title+'</h3><ul class="glist">';
+    g.items.forEach(function(it){
+      html+='<li><div class="gterm">'+it.zh+'<span class="en">'+it.en+'</span></div>'+
+            '<div class="gdef">'+it.def+(it.ref?(' '+refChip(it.ref)):'')+'</div></li>';
+    });
+    html+='</ul></div>';
+  });
+  host.innerHTML=html;
+}
+
+/* ============================================================
+   ENTITY DATA — state cluster, with real internals
+   purpose = collapsed one-liner; methods carry file:line refs
+   ============================================================ */
+var CLUSTER_COLOR = {
+  platform:'#2f7fd1', core:'#6048c4', tools:'#1f9e88',
+  provider:'#c4682f', persist:'#b0407a', learn:'#6a8f1f'
+};
+
+var ENTITIES = {
+  'gateway':{
+    name:'GatewayRunner（寫入者邊界）', cluster:'core', stereo:'state writer（邊界）· gateway/run.py:2475',
+    purpose:'狀態的寫入者（細節在 Gateway 頁）',
+    methods:[
+      ['class GatewayRunner','gateway/run.py:2475'],
+      ['self._session_db = SessionDB()','gateway/run.py:2698'],
+      ['（每輪處理：找 session、取歷史、落地訊息）','gateway/run.py:7265'],
+    ],
+    role:'這頁的邊界：它是狀態的主要寫入者與查詢者。gateway 在初始化時就持有一個 SessionDB 實例，每輪處理時透過它做 session 查詢、把訊息落地、必要時檢索歷史。它的內部留在 Gateway 頁。',
+    summary:'從 State 子系統的角度看，GatewayRunner 是「誰在寫這些狀態」的代表。它在初始化時建好 self._session_db（:2698），驅動 agent 跑完一輪後，把這一輪的會話與訊息透過 SessionDB 落地、必要時做歷史檢索。本頁只畫到它跟持久層的交接面，它自己的邏輯（收訊息、管 session、驅動一輪）在 Gateway 頁。',
+    rels:[
+      ['owns','持有','<b>持有</b> 一個 SessionDB 實例（self._session_db，:2698）。'],
+      ['rw','讀寫','透過 SessionDB <b>讀寫</b> 會話與訊息：落地、查詢、歷史檢索。']
+    ],
+    gotcha:'這張卡是邊界，刻意只畫到交接面。SessionDB 初始化失敗時 gateway 只是把 self._session_db 設成 None 並記 WARNING，此時 session 搜尋、歷史等會失效，但 gateway 本身還是會起來。GatewayRunner 的完整內部在 Gateway 頁。',
+    page:'gateway.html'
+  },
+  'sessiondb':{
+    name:'SessionDB', cluster:'persist', stereo:'sqlite persistence · hermes_state.py:667',
+    purpose:'會話／訊息持久層（SQLite）',
+    methods:[
+      ['class SessionDB（檔尾唯一類別，約 104 個方法）','hermes_state.py:667'],
+      ['def __init__(self, db_path=None, read_only=False)','hermes_state.py:690'],
+      ['DEFAULT_DB_PATH = get_hermes_home() / "state.db"','hermes_state.py:117'],
+      ['def create_session(...) / def append_message(...)','hermes_state.py:1379'],
+      ['def search_messages(...) / def search_sessions(...)','hermes_state.py:3466'],
+      ['apply_wal_with_fallback(self._conn, ...)（__init__ 內）','hermes_state.py:736'],
+      ['report = repair_state_db_schema(self.db_path)','hermes_state.py:761'],
+    ],
+    role:'SQLite 持久層的本體。會話建檔、訊息落地、session 查詢、全文檢索、結構修復、倒帶都在這一個類別裡。預設資料庫檔是 ~/.hermes/state.db。',
+    summary:'這是 State 子系統的中心。它把會話寫進 sessions 表、訊息寫進 messages 表（create_session :1379、append_message :2490），查詢與歷史檢索（get_messages :2762、search_messages :3466、search_sessions :3834）也都是它的方法。開檔時在 __init__ 裡呼叫 apply_wal_with_fallback(:736) 設好 journal mode、必要時呼叫 repair_state_db_schema(:761) 修復壞掉的結構。它同時擁有兩張 FTS5 全文檢索表，靠 SQLite 觸發器在訊息增刪改時自動同步。整個 hermes_state.py 約 5.1k 行、最後就這一個類別塞了約 104 個方法。',
+    rels:[
+      ['isa','被持有','被 <b>GatewayRunner</b> 持有（self._session_db）。'],
+      ['rw','被讀寫','gateway <b>讀寫</b> 它做會話落地、訊息查詢與歷史檢索。'],
+      ['owns','持有','<b>擁有</b> 兩張 FTS5 表（messages_fts、messages_fts_trigram），透過觸發器自動索引訊息。']
+    ],
+    gotcha:'一個類別塞約 104 個方法，是個單檔大物件：要找某段查詢或寫入邏輯幾乎都在這個檔，但靠方法名找比靠行號可靠。另外 state.db 放在 NFS / SMB / FUSE 掛載上時，WAL 會失敗並退回 DELETE 模式（見「WAL 與退場」詞條）；結構壞掉時 repair_state_db_schema 會先去重、再重建 FTS，但 canonical 資料絕不動。',
+    page:null
+  },
+  'messages-fts':{
+    name:'messages_fts', cluster:'persist', stereo:'fts5 virtual table · hermes_state.py:612',
+    purpose:'基底全文索引（預設 tokenizer）',
+    methods:[
+      ['CREATE VIRTUAL TABLE messages_fts USING fts5(content)','hermes_state.py:612'],
+      ['TRIGGER messages_fts_insert / delete / update','hermes_state.py:616'],
+      ['_rebuild_fts_indexes(...)（重建索引）','hermes_state.py:858'],
+    ],
+    role:'第一張全文檢索表，用 SQLite FTS5 的預設（unicode61）tokenizer 索引訊息內容。讓 session 搜尋能用關鍵字找回歷史訊息。',
+    summary:'這是 SessionDB 兩張 FTS5 索引中的基底那張。它只有一欄 content，索引的是訊息內容加上工具名稱、工具呼叫的串接。三個觸發器（insert / delete / update，:616 起）在 messages 表變動時自動把索引同步到位，所以寫訊息的程式碼不用自己維護索引。預設 tokenizer 對英數字詞切得很好，但對中文是逐字拆，這就是為什麼還需要旁邊那張 trigram 表。索引壞掉時由 _rebuild_fts_indexes(:858) 從 canonical 的 messages 表重建。',
+    rels:[
+      ['owns','被擁有','被 <b>SessionDB</b> 擁有並維護。'],
+      ['isa','索引來源','<b>索引</b> messages 表的內容（靠觸發器同步）。']
+    ],
+    gotcha:'它是 SQLite 虛擬表，不是獨立檔案，跟主資料一起在 state.db 裡。預設 tokenizer 把中日韓字逐字切，片語比對會破，所以中文搜尋實際走的是 trigram 那張表，不是這張。',
+    page:null
+  },
+  'messages-fts-trigram':{
+    name:'messages_fts_trigram', cluster:'persist', stereo:'fts5 trigram table · hermes_state.py:641',
+    purpose:'中日韓子字串索引（trigram）',
+    methods:[
+      ['CREATE VIRTUAL TABLE ... USING fts5(content, tokenize=\'trigram\')','hermes_state.py:641'],
+      ['TRIGGER messages_fts_trigram_insert / delete / update','hermes_state.py:646'],
+      ['（trigram 不可用時降級警告）','hermes_state.py:796'],
+    ],
+    role:'第二張全文檢索表，用 trigram tokenizer 把內容切成重疊的三字片段。專為中日韓等沒有空白分詞的語言做子字串搜尋。',
+    summary:'預設 tokenizer 把中文逐字拆，會破壞片語比對。這張表改用 trigram tokenizer，把內容切成一連串重疊的三字（三位元組）片段，於是任何語言（中日韓、泰文等）的子字串查詢都能原生運作。它跟基底表一樣有自己的三個觸發器自動同步（:646 起）。如果執行環境的 SQLite 沒編 trigram 支援，SessionDB 會偵測到並降級、記一次警告，而不是整個炸掉。',
+    rels:[
+      ['owns','被擁有','被 <b>SessionDB</b> 擁有並維護。'],
+      ['isa','索引來源','<b>索引</b> 同一份 messages 內容，但用 trigram 切詞（靠觸發器同步）。']
+    ],
+    gotcha:'trigram 索引比基底索引佔更多空間（每段三字、重疊），這是支援中文子字串搜尋的代價。它依賴 SQLite 編譯時有開 trigram tokenizer；少數環境沒有，這時中文搜尋品質會降級，但不會讓持久層起不來。',
+    page:null
+  },
+  'hermes-home':{
+    name:'~/.hermes/（HERMES_HOME）', cluster:'learn', stereo:'state home dir · hermes_constants.py:54',
+    purpose:'所有狀態的家目錄',
+    methods:[
+      ['def get_hermes_home() -> Path','hermes_constants.py:54'],
+      ['POSIX 預設 Path.home() / ".hermes"','hermes_constants.py:51'],
+      ['DEFAULT_DB_PATH = get_hermes_home() / "state.db"','hermes_state.py:117'],
+      ['get_skills_dir() = get_hermes_home() / "skills"','hermes_constants.py:627'],
+    ],
+    role:'所有 per-user 狀態的根目錄。state.db、memories/、skills/ 都掛在這底下。可用 HERMES_HOME 環境變數整個搬走（profile 模式也是改這條路徑）。',
+    summary:'這是「狀態存在哪」的總入口。get_hermes_home()（:54）回傳這個家目錄，POSIX 預設是 ~/.hermes（Windows 是 %LOCALAPPDATA%\\hermes）。Hermes 的每樣持久狀態都從這裡長出去：SQLite 的 state.db（hermes_state.py:117）、記憶目錄 memories/、技能目錄 skills/（hermes_constants.py:627）。因為集中在一處，備份範圍非常清楚：備份這個資料夾就等於備份全部狀態；換機器只要搬這個資料夾、或設好 HERMES_HOME 指向它。',
+    rels:[
+      ['owns','容納','<b>容納</b> state.db（SessionDB 的檔）。'],
+      ['owns','容納','<b>容納</b> memories/（MEMORY.md / USER.md）與 skills/（各 SKILL.md）。']
+    ],
+    gotcha:'把家目錄放在 NFS / SMB / FUSE 掛載上時，state.db 的 WAL 模式可能失敗並退回 DELETE 模式（見 SessionDB 的「WAL 與退場」）。另外 profile 模式下 HERMES_HOME 會指向 <root>/profiles/<name>，路徑解析有額外處理，但對「備份這一個資料夾即可」這個結論沒有影響。',
+    page:null
+  },
+  'memory-files':{
+    name:'memories/（MEMORY.md · USER.md）', cluster:'learn', stereo:'plain-text memory · tools/memory_tool.py:55',
+    purpose:'記憶檔（純文字，可攜）',
+    methods:[
+      ['def get_memory_dir() = get_hermes_home() / "memories"','tools/memory_tool.py:55'],
+      ['mem_dir / "MEMORY.md"（agent 筆記）','tools/memory_tool.py:152'],
+      ['mem_dir / "USER.md"（對使用者的認識）','tools/memory_tool.py:153'],
+      ['以 § 分隔成一條條 entry','tools/memory_tool.py:59'],
+    ],
+    role:'記憶不是單一個 memory.md，而是 ~/.hermes/memories/ 底下兩個 § 分隔的純文字檔：MEMORY.md（agent 自己的筆記）和 USER.md（agent 對使用者的認識）。',
+    summary:'從持久層角度看，記憶就是兩個純文字檔，住在 ~/.hermes/memories/（get_memory_dir :55）。MEMORY.md 放 agent 的環境事實、慣例、學到的東西；USER.md 放它對使用者偏好與習慣的認識。內容以 § 分隔成一條條 entry。它們在 session 開始時被當成凍結快照注入系統提示，中途寫入會立刻落地到檔，但要等下次 session 才會進系統提示（保住提示快取）。產生與策展邏輯（MemoryManager）在 Agent 頁，這頁只標它的落地形式：純文字、可攜、複製即搬走。',
+    rels:[
+      ['owns','被容納','住在 <b>~/.hermes/</b> 的 memories/ 目錄底下。'],
+      ['calls','產生者','由 Agent 頁的 <b>MemoryManager</b> 讀寫與策展（產生者在 Agent 頁）。']
+    ],
+    gotcha:'常見誤解：以為記憶是單一個 ~/.hermes/memory.md。實際是 memories/ 目錄裡的 MEMORY.md + USER.md。另外因為是注入系統提示的內容，記憶寫入有威脅樣式掃描（防注入 / 外洩）；被擋的 entry 會在快照裡標記，但檔案本身保留讓使用者自己處理。',
+    page:'agent-learning.html'
+  },
+  'skills-files':{
+    name:'skills/（各 SKILL.md）', cluster:'learn', stereo:'plain-text skills · hermes_constants.py:627',
+    purpose:'技能檔（SKILL.md，可攜）',
+    methods:[
+      ['def get_skills_dir() = get_hermes_home() / "skills"','hermes_constants.py:627'],
+      ['每個技能一個資料夾 + 一份 SKILL.md','tools/skills_hub.py:513'],
+      ['SKILL.md 帶 YAML frontmatter','tools/skills_hub.py:953'],
+    ],
+    role:'技能儲存在 ~/.hermes/skills 底下，每個技能一個資料夾、各有一份 SKILL.md（帶 YAML frontmatter）。純文字，直接複製就能搬走。',
+    summary:'技能也是檔案狀態的一種。get_skills_dir()（:627）指向 ~/.hermes/skills，每個技能是一個資料夾，裡面至少有一份 SKILL.md；SKILL.md 用 YAML frontmatter 描述這個技能（名稱、檔案清單等），其餘是技能內容。skills_hub 在發現與預覽技能時就是去找這些 SKILL.md（:513）。因為是純文字目錄，技能的可攜性跟記憶一樣高：複製資料夾即搬走。技能怎麼被策展、何時載入屬於 Agent 頁，這頁只標落地形式。',
+    rels:[
+      ['owns','被容納','住在 <b>~/.hermes/</b> 的 skills/ 目錄底下。'],
+      ['calls','產生者','由 Agent 頁的技能策展邏輯讀取與管理（產生者在 Agent 頁）。']
+    ],
+    gotcha:'除了 ~/.hermes/skills 這個 per-user 目錄，Hermes 還有「內建技能」與「選用技能」目錄（packaged / bundled / optional-skills），那些是隨安裝散布、不算 per-user 狀態，不在備份範圍的討論裡。這頁講的是使用者自己累積、住在家目錄的技能。',
+    page:'agent-learning.html'
+  }
+};
+
+/* ============================================================
+   VIEW 1 — entity layout (design-space coords) + edges
+   writer boundary (left) → SessionDB (center) → file state (right);
+   the two FTS tables sit below the SessionDB.
+   ============================================================ */
+var LAYOUT={
+  'gateway':              {x:40,   y:300},
+  'sessiondb':            {x:560,  y:300},
+  'messages-fts':         {x:430,  y:660},
+  'messages-fts-trigram': {x:690,  y:660},
+  'hermes-home':          {x:1130, y:80},
+  'memory-files':         {x:1130, y:320},
+  'skills-files':         {x:1130, y:560}
+};
+var BOX_W=222;
+
+/* Edges: [from, to, kind, label]
+   from/to are entity ids; ports auto-derived from box geometry. */
+var EDGES=[
+  ['gateway','sessiondb','rw','讀寫會話 / 訊息'],
+  ['sessiondb','messages-fts','owns','索引（觸發器同步）'],
+  ['sessiondb','messages-fts-trigram','owns','索引（CJK trigram）'],
+  ['sessiondb','hermes-home','isa','state.db 落在此'],
+  ['hermes-home','memory-files','owns','容納 memories/'],
+  ['hermes-home','skills-files','owns','容納 skills/']
+];
+
+/* approximate collapsed box heights for port math (collapsed = head + role) */
+var BOX_H=92;
+
+function boxRect(id){
+  var L=LAYOUT[id];
+  var el=document.querySelector('.entity[data-entity="'+id+'"]');
+  var h=el?el.offsetHeight:BOX_H;
+  return {x:L.x, y:L.y, w:BOX_W, h:h, cx:L.x+BOX_W/2, cy:L.y+h/2};
+}
+/* pick connection ports on box edges facing each other */
+function ports(a,b){
+  var dx=b.cx-a.cx, dy=b.cy-a.cy;
+  function side(r,toX,toY){
+    if(Math.abs(toX-r.cx) > Math.abs(toY-r.cy)){
+      return toX>r.cx ? {x:r.x+r.w, y:r.cy} : {x:r.x, y:r.cy};
+    } else {
+      return toY>r.cy ? {x:r.cx, y:r.y+r.h} : {x:r.cx, y:r.y};
+    }
+  }
+  return [side(a,b.cx,b.cy), side(b,a.cx,a.cy)];
+}
+
+function buildEntities(){
+  var host=document.getElementById('canvas1');
+  Object.keys(ENTITIES).forEach(function(id){
+    var e=ENTITIES[id], L=LAYOUT[id];
+    var box=document.createElement('div');
+    box.className='entity '+e.cluster+(id==='gateway'?' boundary':'');
+    box.setAttribute('data-entity',id);
+    box.setAttribute('data-detail',id);
+    box.setAttribute('role','button');
+    box.setAttribute('tabindex','0');
+    box.style.left=L.x+'px'; box.style.top=L.y+'px';
+    box.innerHTML=
+      '<span class="etag"></span>'+
+      '<div class="ehead">'+
+        '<span class="ename">'+e.name.replace(/（.*?）/,'')+'</span>'+
+      '</div>'+
+      '<div class="erole">'+e.purpose+'</div>';
+    host.appendChild(box);
+  });
+}
+
+function buildEdges(){
+  var svg=document.getElementById('edges1');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  EDGES.forEach(function(e,i){
+    var from=e[0], to=e[1], kind=e[2], label=e[3];
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    var tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+    var d, lx, ly;
+    if(from===to){
+      var r=boxRect(from);
+      var sx=r.x+r.w-26, sy=r.y, ex=r.x+r.w-6, ey=r.y;
+      d='M '+sx+' '+sy+' C '+(sx)+' '+(sy-26)+' '+(ex)+' '+(ey-26)+' '+ex+' '+ey;
+      lx=(sx+ex)/2; ly=sy-30;
+    } else {
+      var a=boxRect(from), b=boxRect(to);
+      var p=ports(a,b);
+      var f=p[0], t=p[1];
+      var mx=(f.x+t.x)/2, my=(f.y+t.y)/2;
+      var dx=t.x-f.x, dy=t.y-f.y;
+      var len=Math.sqrt(dx*dx+dy*dy)||1;
+      var px=-dy/len, py=dx/len;
+      var bend=Math.min(40, len*0.12);
+      var cx=mx+px*bend, cy=my+py*bend;
+      d='M '+f.x+' '+f.y+' Q '+cx+' '+cy+' '+t.x+' '+t.y;
+      lx=0.25*f.x+0.5*cx+0.25*t.x; ly=0.25*f.y+0.5*cy+0.25*t.y;
+    }
+    path.setAttribute('d',d);
+    path.setAttribute('class','edge-path');
+    path.setAttribute('data-edge',i);
+    path.setAttribute('data-from',from); path.setAttribute('data-to',to); path.setAttribute('data-kind',kind);
+    path.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+    svg.appendChild(path);
+    var tw=label.length*7.2+8;
+    bg.setAttribute('x',lx-tw/2); bg.setAttribute('y',ly-9);
+    bg.setAttribute('width',tw); bg.setAttribute('height',16);
+    bg.setAttribute('rx',4); bg.setAttribute('class','edge-label-bg'); bg.setAttribute('data-elabel',i);
+    svg.appendChild(bg);
+    tx.setAttribute('x',lx); tx.setAttribute('y',ly+3);
+    tx.setAttribute('text-anchor','middle'); tx.setAttribute('class','edge-label'); tx.setAttribute('data-elabel',i);
+    tx.textContent=label;
+    svg.appendChild(tx);
+  });
+}
+
+/* focus+context: highlight one entity's edges, dim the rest */
+function focusEntity(id){
+  var paths=document.querySelectorAll('.edge-path');
+  paths.forEach(function(p){
+    var on = p.getAttribute('data-from')===id || p.getAttribute('data-to')===id;
+    p.classList.toggle('hot',on);
+    p.classList.toggle('dim',!on);
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', on
+      ? (kind==='isa'?'url(#tri-isa-hot)':'url(#arrow-hot)')
+      : (kind==='isa'?'url(#tri-isa)':'url(#arrow)'));
+  });
+  EDGES.forEach(function(e,i){
+    var on = e[0]===id || e[1]===id;
+    document.querySelectorAll('[data-elabel="'+i+'"]').forEach(function(n){
+      n.classList.toggle('hot',on); n.classList.toggle('dim',!on);
+    });
+  });
+  document.querySelectorAll('.entity').forEach(function(el){
+    el.classList.toggle('lit', el.getAttribute('data-entity')===id);
+  });
+}
+function clearFocus(){
+  document.querySelectorAll('.edge-path').forEach(function(p){
+    p.classList.remove('hot','dim');
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+  });
+  document.querySelectorAll('.edge-label,.edge-label-bg').forEach(function(n){n.classList.remove('hot','dim');});
+  document.querySelectorAll('.entity.lit').forEach(function(el){el.classList.remove('lit');});
+}
+
+/* ============================================================
+   VIEW 2 — sequence diagram layout (一輪講完後狀態怎麼落地)
+   ============================================================ */
+var SEQ_ACTORS = [
+  {id:'gateway',              label:'GatewayRunner',  sub:'run.py（邊界）',   x:95},
+  {id:'sessiondb',            label:'SessionDB',      sub:'hermes_state',     x:355},
+  {id:'messages-fts',         label:'messages_fts',   sub:'fts5 / trigram',   x:620},
+  {id:'memory-files',         label:'~/.hermes/',     sub:'memories · skills',x:880}
+];
+var SEQ_MSGS = [
+  ['gateway','sessiondb',          '1','一輪結束 · append_message 落地訊息',120,'fwd'],
+  ['sessiondb','sessiondb',        '2','寫進 messages 表（state.db）',164,'self'],
+  ['sessiondb','messages-fts',     '3','觸發器自動同步 FTS（含 CJK trigram）',224,'fwd'],
+  ['gateway','sessiondb',          '4','下次同 session：search / 取歷史',280,'fwd'],
+  ['sessiondb','gateway',          '5','回傳會話與訊息',330,'ret'],
+  ['gateway','memory-files',       '6','記憶 / 技能寫入純文字檔（Agent 頁邏輯）',388,'fwd'],
+  ['memory-files','memory-files',  '7','MEMORY.md / USER.md / SKILL.md 落地',432,'self'],
+  ['memory-files','gateway',       '8','下次 session 開始：當凍結快照注入',482,'ret']
+];
+function actorX(id){for(var i=0;i<SEQ_ACTORS.length;i++){if(SEQ_ACTORS[i].id===id)return SEQ_ACTORS[i].x;}return 0;}
+
+function buildSequence(){
+  var holder=document.getElementById('seq1');
+  var svg=document.getElementById('seqsvg');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  Array.prototype.slice.call(holder.querySelectorAll('.seq-actorbox,.seq-step')).forEach(function(n){n.remove();});
+  var topY=78, botY=520;
+  SEQ_ACTORS.forEach(function(a){
+    var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',a.x); line.setAttribute('y1',topY);
+    line.setAttribute('x2',a.x); line.setAttribute('y2',botY);
+    line.setAttribute('class','seq-lifeline');
+    svg.appendChild(line);
+    var box=document.createElement('div');
+    box.className='seq-actorbox'; box.style.left=a.x+'px'; box.style.top='18px';
+    box.setAttribute('data-entity',a.id);
+    box.innerHTML='<div class="an">'+a.label+'</div><div class="ar">'+a.sub+'</div>';
+    var col=CLUSTER_COLOR[(ENTITIES[a.id]||{}).cluster]||'#4554d6';
+    box.style.borderTopColor=col; box.style.borderTopWidth='3px';
+    holder.appendChild(box);
+  });
+  SEQ_MSGS.forEach(function(m){
+    var x1=actorX(m[0]), x2=actorX(m[1]), y=m[4], kind=m[5];
+    var cls=kind==='ret'?'ret':kind==='self'?'self':'';
+    var mk=kind==='ret'?'url(#seqarrow-ret)':kind==='self'?'url(#seqarrow-self)':'url(#seqarrow)';
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var d;
+    if(kind==='self'){ d='M '+x1+' '+y+' h 46 v 26 h -46'; }
+    else { d='M '+x1+' '+y+' L '+x2+' '+y; }
+    path.setAttribute('d',d); path.setAttribute('class','seq-arrow '+cls);
+    path.setAttribute('marker-end',mk);
+    svg.appendChild(path);
+    var numt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    numt.setAttribute('x',(kind==='self'? x1+10 : Math.min(x1,x2)+8));
+    numt.setAttribute('y',y-6); numt.setAttribute('class','seq-msgnum');
+    numt.textContent=m[2];
+    svg.appendChild(numt);
+    var lx=kind==='self'? x1+54 : (x1+x2)/2;
+    var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lt.setAttribute('x',lx); lt.setAttribute('y', kind==='self'? y+18 : y-6);
+    lt.setAttribute('text-anchor', kind==='self'?'start':'middle');
+    lt.setAttribute('class','seq-msglabel'); lt.textContent=m[3];
+    svg.appendChild(lt);
+    var target = kind==='ret'? m[0] : m[1];
+    if(kind==='self') target=m[0];
+    var step=document.createElement('div');
+    step.className='seq-step'; step.setAttribute('data-entity',target);
+    var hx=Math.min(x1,x2), hw=Math.abs(x2-x1)||60;
+    step.style.left=(hx-4)+'px'; step.style.top=(y-14)+'px';
+    step.style.width=(hw+8)+'px'; step.style.height=(kind==='self'?40:22)+'px';
+    step.title='步驟 '+m[2]+'：'+m[3];
+    holder.appendChild(step);
+  });
+}
+
+/* ============================================================
+   DETAIL PANEL
+   ============================================================ */
+var scrim=document.getElementById('scrim');
+var panel=document.getElementById('panel');
+var pbody=document.getElementById('pbody');
+var KIND_LABEL={owns:'持有（owns）',calls:'呼叫（calls）',rw:'讀寫（reads-writes）',isa:'容納 / 落點（contains）'};
+var KIND_CLASS={owns:'r-owns',calls:'r-calls',rw:'r-rw',isa:'r-isa'};
+
+function openPanel(id){
+  var e=ENTITIES[id]; if(!e)return;
+  document.getElementById('pname').textContent=e.name;
+  document.getElementById('pstereo').textContent=e.stereo;
+  var col=CLUSTER_COLOR[e.cluster]||'#4554d6';
+  document.getElementById('pmark').style.background=col;
+  var html='';
+  html+='<p class="role-line">'+e.role+'</p>';
+  html+='<h4>它是什麼 / 做什麼</h4><p>'+e.summary+'</p>';
+  html+='<h4>關鍵方法 / 欄位</h4><ul class="keymethods">';
+  e.methods.forEach(function(m){
+    html+='<li><span class="mono">'+m[0]+'</span>';
+    if(m[1] && m[1]!=='—'){html+=' '+refChip(m[1]);}
+    html+='</li>';
+  });
+  html+='</ul>';
+  html+='<h4>跟鄰居的關係</h4><ul class="rels">';
+  e.rels.forEach(function(r){
+    html+='<li class="'+(KIND_CLASS[r[0]]||'')+'"><span class="relverb">'+(KIND_LABEL[r[0]]||r[0])+'</span>：'+r[2]+'</li>';
+  });
+  html+='</ul>';
+  if(e.gotcha){
+    html+='<h4>限制 / 容易誤解的地方</h4><div class="gotcha"><p>'+e.gotcha+'</p></div>';
+  }
+  if(e.page){
+    html+='<div style="margin-top:18px"><a class="panel-detaillink" href="'+e.page+'">細節頁：'+e.page+' →</a></div>';
+  } else {
+    html+='<div style="margin-top:18px"><span class="panel-detaillink none">（State 子系統內，無另開細節頁）</span></div>';
+  }
+  pbody.innerHTML=html;
+  pbody.scrollTop=0;
+  panel.classList.add('open'); scrim.classList.add('open');
+  panel.setAttribute('aria-hidden','false');
+  document.querySelectorAll('.entity.sel,.seq-actorbox.sel,.seq-step.sel').forEach(function(n){n.classList.remove('sel');});
+  document.querySelectorAll('[data-entity="'+id+'"]').forEach(function(n){n.classList.add('sel');});
+  focusEntity(id);
+}
+function closePanel(){
+  panel.classList.remove('open'); scrim.classList.remove('open');
+  panel.setAttribute('aria-hidden','true');
+  document.querySelectorAll('.sel').forEach(function(n){n.classList.remove('sel');});
+  clearFocus();
+}
+document.getElementById('pclose').addEventListener('click',closePanel);
+scrim.addEventListener('click',closePanel);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePanel();});
+
+/* ============================================================
+   INTERACTIONS — detail open, hover focus
+   ============================================================ */
+document.addEventListener('click',function(ev){
+  var det=ev.target.closest('[data-detail]');
+  if(det){ openPanel(det.getAttribute('data-detail')); ev.stopPropagation(); return; }
+  var seqt=ev.target.closest('.seq-actorbox,.seq-step');
+  if(seqt){ openPanel(seqt.getAttribute('data-entity')); return; }
+});
+
+/* keyboard: Enter / Space on a focused card opens the drawer */
+document.addEventListener('keydown',function(ev){
+  if(ev.key!=='Enter' && ev.key!==' ') return;
+  var card=ev.target.closest && ev.target.closest('.entity[data-detail]');
+  if(card){ ev.preventDefault(); openPanel(card.getAttribute('data-detail')); }
+});
+
+/* hover an entity → focus its edges */
+document.addEventListener('mouseover',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){ focusEntity(card.getAttribute('data-entity')); }
+});
+document.addEventListener('mouseout',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){
+    var to=ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('.entity');
+    if(!to) clearFocus();
+  }
+});
+
+/* ============================================================
+   TABS + responsive scaling
+   ============================================================ */
+var tabs=document.querySelectorAll('.tab');
+tabs.forEach(function(tb){
+  tb.addEventListener('click',function(){
+    tabs.forEach(function(x){x.classList.remove('active'); x.setAttribute('aria-selected','false');});
+    tb.classList.add('active'); tb.setAttribute('aria-selected','true');
+    var v=tb.getAttribute('data-view');
+    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+    document.getElementById('view-'+v).classList.add('active');
+    if(v==='v1'){ requestAnimationFrame(function(){buildEdges(); fitCanvas();}); }
+  });
+});
+
+/* big whiteboard: no shrink-to-fit. The .canvas wrapper scrolls in both
+   directions; the page itself stays put. */
+function fitCanvas(){
+  var inner=document.getElementById('canvas1');
+  if(!inner)return;
+  inner.style.transform='none';
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+buildConcepts();
+hydrateRefs(document);   // hydrate static refs in the caveat note
+buildEntities();
+buildEdges();
+buildSequence();
+fitCanvas();
+</script>
+
+</body>
+</html>

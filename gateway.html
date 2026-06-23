@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes 架構解說 · Gateway</title>
+<style>
+/* ============================================================
+   SHARED DESIGN SYSTEM  (carried from index.html verbatim)
+   ============================================================ */
+:root{
+  --bg:        #f7f8fa;
+  --bg-card:   #ffffff;
+  --bg-sunken: #f0f2f5;
+  --ink:       #1c2330;
+  --ink-soft:  #4a5468;
+  --ink-faint: #8b94a6;
+  --line:      #e2e6ec;
+  --line-soft: #eceff3;
+  --accent:    #4554d6;       /* indigo accent */
+  --accent-ink:#3340b8;
+  --accent-bg: #eef0fd;
+  --accent-bg2:#e4e7fb;
+  --warn-bg:   #fff8ec;
+  --warn-line: #f0dcb0;
+  --warn-ink:  #8a6418;
+  --ok:        #2f9e6f;
+  /* cluster accent tints (informal map) */
+  --c-platform:#2f7fd1; --c-platform-bg:#eaf3fc;
+  --c-core:    #6048c4; --c-core-bg:#efebfb;
+  --c-tools:   #1f9e88; --c-tools-bg:#e6f5f1;
+  --c-provider:#c4682f; --c-provider-bg:#fbf0e7;
+  --c-persist: #b0407a; --c-persist-bg:#fbe9f2;
+  --c-learn:   #6a8f1f; --c-learn-bg:#f1f6e4;
+  --radius:    10px;
+  --radius-sm: 6px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+          "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif;
+  --shadow: 0 1px 2px rgba(20,28,46,.04), 0 2px 8px rgba(20,28,46,.05);
+  --shadow-lift: 0 4px 16px rgba(20,28,46,.10);
+  --maxw: 1180px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); line-height:1.7;
+  font-size:16px; -webkit-font-smoothing:antialiased;
+}
+code, .mono{font-family:var(--mono); font-size:.86em}
+a{color:var(--accent-ink); text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{line-height:1.3; font-weight:680}
+h2{font-size:1.4rem; margin:0 0 .2em}
+h3{font-size:1.06rem; margin:0 0 .3em}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+/* ---- file:line reference chip + repo link (shared) ---- */
+.ref{
+  font-family:var(--mono); font-size:.8em;
+  background:var(--bg-sunken); color:var(--ink-soft);
+  border:1px solid var(--line); border-radius:5px;
+  padding:.05em .42em; white-space:nowrap; display:inline-block;
+}
+.ref b{color:var(--accent-ink); font-weight:600}
+a.ref{cursor:pointer; transition:background .12s, border-color .12s}
+a.ref:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+a.ref::after{content:" \2197"; font-size:.85em; color:var(--ink-faint)}
+a.ref:hover::after{color:var(--accent-ink)}
+
+/* ---- persistent top nav (shared) ---- */
+.topnav{
+  position:sticky; top:0; z-index:80;
+  background:rgba(247,248,250,.88); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topnav .wrap{display:flex; align-items:center; gap:6px; height:56px; flex-wrap:wrap}
+.brand{font-weight:720; letter-spacing:.2px; margin-right:10px; white-space:nowrap}
+.brand small{color:var(--ink-faint); font-weight:500; font-size:.7rem; margin-left:6px}
+.navlinks{display:flex; gap:2px; flex-wrap:wrap}
+.navlinks a{
+  color:var(--ink-soft); font-size:.85rem; padding:5px 11px;
+  border-radius:7px; white-space:nowrap;
+}
+.navlinks a:hover{background:var(--bg-sunken); text-decoration:none}
+.navlinks a.active{background:var(--accent-bg); color:var(--accent-ink); font-weight:600}
+
+.section{margin:40px 0}
+/* full-bleed: break a block out of the readable column to span the viewport
+   width. used by the diagram section so the wide whiteboard fits with little
+   or no horizontal scroll. prose sections keep the ~1180px column. */
+.fullbleed{
+  width:96vw;
+  margin-left:calc(50% - 48vw);
+  margin-right:calc(50% - 48vw);
+}
+.fullbleed .bleed-inner{max-width:none; padding:0 24px}
+.eyebrow{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 6px;
+}
+.lead{color:var(--ink-soft); max-width:76ch}
+
+/* ---- breadcrumb (gateway page) ---- */
+.crumb{
+  font-size:.84rem; color:var(--ink-faint); margin:0 0 4px;
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+}
+.crumb a{color:var(--ink-soft); font-weight:600}
+.crumb .sep{color:var(--ink-faint)}
+.crumb .here{color:var(--accent-ink); font-weight:700}
+
+/* ---- snapshot stamp (shared) ---- */
+.stamp{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:.78rem;
+  background:var(--bg-card); border:1px solid var(--line);
+  border-radius:99px; padding:5px 14px; color:var(--ink-soft);
+  box-shadow:var(--shadow);
+}
+.stamp .dot{width:7px; height:7px; border-radius:50%; background:var(--ok)}
+.stamp b{color:var(--ink); font-weight:600}
+
+/* ---- footer (shared) ---- */
+footer{
+  border-top:1px solid var(--line); margin-top:60px;
+  padding:26px 0 50px; color:var(--ink-faint); font-size:.8rem;
+}
+footer .wrap{display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; align-items:center}
+footer .mono{font-family:var(--mono)}
+
+/* hero */
+.hero{padding:30px 0 8px}
+.hero h1{font-size:2.05rem; margin:.1em 0 .35em; letter-spacing:-.01em}
+.hero .sub{color:var(--ink-soft); font-size:1.04rem; max-width:74ch; margin:0 0 18px}
+.snapshot-line{color:var(--ink-faint); font-size:.84rem; margin-top:12px; max-width:72ch}
+
+/* ============================================================
+   CONCEPTS SECTION — ubiquitous language glossary
+   ============================================================ */
+.concepts{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  padding:26px 28px 30px;
+}
+.concepts .intro{color:var(--ink-soft); max-width:78ch; margin:0 0 4px}
+.concept-groups{
+  display:grid; grid-template-columns:repeat(2,1fr); gap:22px 30px; margin-top:22px;
+}
+@media (max-width:760px){ .concept-groups{grid-template-columns:1fr} }
+.cgroup h3{
+  font-size:.96rem; margin:0 0 10px; display:flex; align-items:center; gap:8px;
+}
+.cgroup h3 .gdot{width:10px; height:10px; border-radius:3px; flex:0 0 auto}
+.glist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px}
+.glist li{padding-left:2px}
+.gterm{font-weight:680; color:var(--ink); font-size:.92rem}
+.gterm .en{font-family:var(--mono); font-size:.78rem; font-weight:600; color:var(--accent-ink); margin-left:5px}
+.gdef{color:var(--ink-soft); font-size:.86rem; line-height:1.55; margin-top:2px}
+.gdef .ref{margin-left:4px}
+.cgroup.g-recv h3 .gdot{background:var(--c-platform)}
+.cgroup.g-drive h3 .gdot{background:var(--c-core)}
+.cgroup.g-send h3 .gdot{background:var(--c-persist)}
+
+/* ============================================================
+   VIEW TABS
+   ============================================================ */
+.tabs{display:flex; gap:6px; margin:6px 0 6px; flex-wrap:wrap; align-items:center}
+.tab{
+  font-family:var(--sans); font-size:.9rem; font-weight:600;
+  color:var(--ink-soft); background:var(--bg-card);
+  border:1px solid var(--line); border-radius:9px;
+  padding:8px 16px; cursor:pointer; transition:all .14s;
+}
+.tab:hover{background:var(--bg-sunken); color:var(--ink)}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+.tab .tnote{font-weight:500; font-size:.78rem; opacity:.8; margin-left:6px}
+.tab.active .tnote{opacity:.9}
+/* quiet sub-label: the cards in the diagram are clickable */
+.clickhint{
+  color:var(--ink-faint); font-size:.8rem; font-weight:500;
+  margin-left:4px; display:inline-flex; align-items:center; gap:5px;
+}
+.clickhint::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--accent); opacity:.55; flex:0 0 auto;
+}
+.view{display:none}
+.view.active{display:block}
+.viewhint{color:var(--ink-faint); font-size:.85rem; margin:4px 0 14px}
+.viewhint b{color:var(--ink-soft)}
+
+/* ============================================================
+   VIEW 1 — informal class diagram (entity map)
+   ============================================================ */
+.diagram-shell{position:relative}
+.canvas{
+  position:relative; width:100%;
+  border:1px solid var(--line); border-radius:14px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(120,130,150,.13) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--bg-card);
+  box-shadow:var(--shadow);
+  /* roomy whiteboard: the canvas itself scrolls in both directions, page stays put */
+  overflow:auto; -webkit-overflow-scrolling:touch;
+  max-height:80vh;
+}
+/* fixed design coordinate space — big whiteboard, no shrink-to-fit */
+.canvas-inner{position:relative; width:1500px; height:880px; margin:0}
+.svg-edges{position:absolute; inset:0; width:1500px; height:880px; pointer-events:none; z-index:1}
+/* edges DE-EMPHASIZED by default */
+.edge-path{fill:none; stroke:#d2d8e2; stroke-width:1.2; transition:stroke .15s, stroke-width .15s, opacity .15s}
+.edge-path.hot{stroke:var(--accent); stroke-width:2.4; opacity:1}
+.edge-path.dim{opacity:.32}
+.edge-label{
+  font-family:var(--mono); font-size:11px; fill:var(--ink-faint);
+  transition:fill .15s, opacity .15s; opacity:0;
+}
+.edge-label.hot{fill:var(--accent-ink); opacity:1}
+.edge-label.dim{opacity:0}
+.edge-label-bg{fill:var(--bg-card); opacity:0; transition:opacity .15s}
+.edge-label-bg.hot{opacity:.94}
+/* arrow markers dim by default, lit on .hot via JS marker swap */
+
+/* class boxes — compact static tiles, whole card opens the drawer */
+.entity{
+  position:absolute; z-index:2;
+  width:222px; background:var(--bg-card);
+  border:1.5px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow);
+  transition:transform .12s, box-shadow .14s, border-color .14s;
+  overflow:hidden; cursor:pointer; user-select:none;
+}
+.entity:hover{transform:translateY(-2px); box-shadow:var(--shadow-lift)}
+.entity:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.entity.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.entity.lit{box-shadow:0 0 0 2px var(--accent-bg2), var(--shadow-lift)}
+.entity .ehead{
+  padding:10px 13px 4px; display:flex; align-items:center; gap:7px;
+}
+.entity .ename{font-weight:700; font-size:.95rem; letter-spacing:.1px}
+.entity .erole{
+  padding:0 13px 11px; font-size:.78rem; color:var(--ink-soft);
+  line-height:1.45;
+}
+.entity .etag{
+  position:absolute; top:0; left:0; width:5px; height:100%;
+}
+/* cluster colourings */
+.entity.platform{border-color:#cfe1f4}
+.entity.platform .etag{background:var(--c-platform)}
+.entity.platform .ename{color:var(--c-platform)}
+.entity.core{border-color:#dcd5f4}
+.entity.core .etag{background:var(--c-core)}
+.entity.core .ename{color:var(--c-core)}
+.entity.tools{border-color:#cdeae3}
+.entity.tools .etag{background:var(--c-tools)}
+.entity.tools .ename{color:var(--c-tools)}
+.entity.provider{border-color:#f0ddca}
+.entity.provider .etag{background:var(--c-provider)}
+.entity.provider .ename{color:var(--c-provider)}
+.entity.persist{border-color:#f4d3e3}
+.entity.persist .etag{background:var(--c-persist)}
+.entity.persist .ename{color:var(--c-persist)}
+.entity.learn{border-color:#e3edca}
+.entity.learn .etag{background:var(--c-learn)}
+.entity.learn .ename{color:var(--c-learn)}
+/* boundary entity (the agent, owned by the Agent detail page) — dashed edge */
+.entity.boundary{border-style:dashed; opacity:.96}
+.entity.boundary .erole{color:var(--ink-faint)}
+
+/* cluster labels (informal hand-drawn group hint) */
+.cluster-label{
+  position:absolute; z-index:1; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:600;
+  border:1px dashed var(--line); border-radius:99px;
+  padding:2px 11px; background:rgba(255,255,255,.6);
+}
+
+/* legend + toolbar */
+.diagram-toolbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:14px 0 4px}
+.minibtn{
+  font-size:.78rem; font-weight:600; color:var(--ink-soft);
+  background:var(--bg-card); border:1px solid var(--line); border-radius:8px;
+  padding:5px 12px; cursor:pointer; transition:all .12s;
+}
+.minibtn:hover{background:var(--bg-sunken); color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:14px; font-size:.8rem; color:var(--ink-soft)}
+.legend .li{display:inline-flex; align-items:center; gap:6px}
+.legend .swatch{width:24px; height:0; border-top-width:2px; border-top-style:solid}
+.legend .sw-owns{border-color:var(--c-core)}
+.legend .sw-calls{border-color:#9aa4b6}
+.legend .sw-rw{border-color:var(--c-persist); border-top-style:dashed}
+.legend .sw-isa{border-color:#9aa4b6; border-top-style:dotted}
+.legend .dotc{width:11px;height:11px;border-radius:3px}
+
+/* ============================================================
+   VIEW 2 — informal sequence diagram
+   ============================================================ */
+.seq-shell{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  overflow-x:auto;
+}
+.seq-inner{position:relative; width:1040px; min-width:1040px; height:560px; margin:0 auto}
+.seq-svg{position:absolute; inset:0; width:1040px; height:560px}
+.seq-lifeline{stroke:#c4ccd9; stroke-width:1.4; stroke-dasharray:4 4}
+.seq-arrow{stroke:#7d8aa0; stroke-width:1.6; fill:none}
+.seq-arrow.ret{stroke:#b0407a; stroke-dasharray:5 4}
+.seq-arrow.self{stroke:#6a8f1f}
+.seq-msglabel{font-family:var(--sans); font-size:12px; fill:var(--ink)}
+.seq-msgnum{font-family:var(--mono); font-size:11px; fill:var(--accent); font-weight:700}
+.seq-actorbox{
+  position:absolute; transform:translateX(-50%);
+  width:150px; text-align:center; cursor:pointer; z-index:3;
+  border-radius:10px; padding:8px 5px; box-shadow:var(--shadow);
+  border:1.5px solid var(--line); background:var(--bg-card);
+  transition:transform .12s, box-shadow .14s;
+}
+.seq-actorbox:hover{transform:translateX(-50%) translateY(-2px); box-shadow:var(--shadow-lift)}
+.seq-actorbox.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.seq-actorbox .an{font-weight:700; font-size:.82rem}
+.seq-actorbox .ar{font-size:.66rem; color:var(--ink-faint); font-family:var(--mono)}
+.seq-step{
+  position:absolute; z-index:3; cursor:pointer;
+  border-radius:6px; transition:background .12s;
+}
+.seq-step:hover{background:rgba(69,84,214,.08)}
+.seq-step.sel{background:rgba(69,84,214,.13); outline:1.5px solid var(--accent-bg2)}
+
+/* ============================================================
+   DETAIL PANEL (shared by both views) — slide-in side panel
+   ============================================================ */
+.panel-scrim{
+  position:fixed; inset:0; background:rgba(20,28,46,.34);
+  z-index:90; opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.panel-scrim.open{opacity:1; pointer-events:auto}
+.panel{
+  position:fixed; top:0; right:0; height:100%; width:min(540px,94vw);
+  background:var(--bg-card); z-index:95; box-shadow:-8px 0 30px rgba(20,28,46,.16);
+  transform:translateX(100%); transition:transform .24s cubic-bezier(.4,.0,.2,1);
+  display:flex; flex-direction:column;
+}
+.panel.open{transform:translateX(0)}
+.panel-head{
+  padding:18px 22px 14px; border-bottom:1px solid var(--line);
+  display:flex; align-items:flex-start; gap:12px;
+}
+.panel-head .pmark{
+  flex:0 0 auto; width:10px; height:38px; border-radius:4px; margin-top:2px;
+  background:var(--accent);
+}
+.panel-head .ph-t{flex:1 1 auto; min-width:0}
+.panel-head .ph-name{font-size:1.18rem; font-weight:720; letter-spacing:.1px}
+.panel-head .ph-stereo{font-family:var(--mono); font-size:.72rem; color:var(--ink-faint); margin-top:2px}
+.panel-close{
+  flex:0 0 auto; cursor:pointer; border:1px solid var(--line);
+  background:var(--bg-sunken); border-radius:8px; width:32px; height:32px;
+  font-size:1.1rem; color:var(--ink-soft); line-height:1;
+}
+.panel-close:hover{background:var(--line-soft); color:var(--ink)}
+.panel-body{padding:18px 22px 40px; overflow-y:auto; flex:1 1 auto}
+.panel-body h4{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); margin:20px 0 7px; font-weight:600;
+}
+.panel-body h4:first-child{margin-top:2px}
+.panel-body p{margin:.55em 0; color:var(--ink-soft); font-size:.92rem}
+.panel-body .role-line{font-size:1rem; color:var(--ink); margin:2px 0 4px}
+.panel-body ul.keymethods{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:7px}
+.panel-body ul.keymethods li{font-size:.86rem; color:var(--ink-soft)}
+.panel-body ul.rels{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:6px}
+.panel-body ul.rels li{font-size:.88rem; color:var(--ink-soft); padding-left:18px; position:relative}
+.panel-body ul.rels li::before{
+  content:""; position:absolute; left:0; top:.62em; width:9px; height:9px;
+  border-radius:2px; background:var(--ink-faint);
+}
+.panel-body ul.rels li.r-owns::before{background:var(--c-core)}
+.panel-body ul.rels li.r-calls::before{background:#9aa4b6}
+.panel-body ul.rels li.r-rw::before{background:var(--c-persist)}
+.panel-body ul.rels li.r-isa::before{background:var(--c-platform)}
+.panel-body .relverb{font-weight:700; color:var(--ink)}
+.gotcha{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:10px; padding:13px 16px; margin:10px 0 4px;
+}
+.gotcha p{color:#5f4d22; margin:.3em 0; font-size:.88rem}
+.panel-detaillink{
+  display:inline-flex; align-items:center; gap:6px; margin-top:6px;
+  font-size:.86rem; font-weight:600; color:var(--accent-ink);
+  background:var(--accent-bg); padding:6px 14px; border-radius:8px;
+}
+.panel-detaillink:hover{background:var(--accent-bg2); text-decoration:none}
+.panel-detaillink.none{background:var(--bg-sunken); color:var(--ink-faint); font-weight:500; cursor:default}
+
+/* honest note callout */
+.note{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:var(--radius); padding:18px 22px; margin:18px 0;
+}
+.note .eyebrow{color:var(--warn-ink)}
+.note p{margin:.4em 0; color:#5f4d22}
+
+/* related cross-links */
+.related{
+  border:1px solid var(--line); border-radius:14px; background:var(--bg-card);
+  box-shadow:var(--shadow); padding:22px 24px;
+}
+.related h3{margin:0 0 4px}
+.relgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px}
+@media (max-width:680px){ .relgrid{grid-template-columns:1fr} }
+.relcard{
+  display:block; border:1px solid var(--line); border-radius:10px;
+  padding:13px 15px; background:var(--bg-sunken); transition:all .12s;
+}
+.relcard:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+.relcard .rk{font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+.relcard .rt{font-weight:680; color:var(--ink); margin-top:2px}
+.relcard .rd{font-size:.82rem; color:var(--ink-soft); margin-top:3px}
+
+/* responsive */
+.scaler{overflow-x:auto; -webkit-overflow-scrolling:touch}
+@media (max-width:680px){
+  .hero h1{font-size:1.6rem}
+  .topnav .wrap{height:auto; padding-top:8px; padding-bottom:8px}
+  .panel{width:100vw}
+  .concepts{padding:20px 18px 22px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ PERSISTENT NAV (shared, Gateway active) ============ -->
+<nav class="topnav">
+  <div class="wrap">
+    <span class="brand">Hermes 架構解說<small>v0.17.0 · Gateway</small></span>
+    <div class="navlinks">
+      <a href="index.html">總覽</a>
+      <a href="gateway.html" class="active">Gateway</a>
+      <a href="agent-learning.html">Agent 與學習</a>
+      <a href="tools-mcp.html">Tools 與 MCP</a>
+      <a href="providers.html">Providers</a>
+      <a href="state.html">State</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <p class="crumb">
+      <a href="index.html">總覽</a>
+      <span class="sep">/</span>
+      <span class="here">Gateway 子系統</span>
+      <span class="sep">·</span>
+      <span>你在這：放大看「收訊息、管 session、驅動一輪、送回覆」這一段</span>
+    </p>
+    <p class="eyebrow">長駐主控行程 · 收訊息到送回覆的那條脊椎</p>
+    <h1>Gateway：把一則平台訊息變成一輪 agent 對話，再送回去</h1>
+    <p class="sub">
+      Gateway 是 Hermes 那個一直在跑的主控行程。它從某個聊天平台收到一則訊息，找出或建立這個 session 對應的 agent，備好歷史，驅動 agent 跑完一輪，再把回覆依各平台的送出規則送回去。總覽頁只用一張小卡帶過它，這頁把它拆開看裡面的實體與關係。
+    </p>
+    <span class="stamp">
+      <span class="dot"></span>
+      <span>快照 <b>Hermes v0.17.0</b> · commit <b>2a10b83</b> · <b>2026-06-22</b></span>
+    </span>
+    <p class="snapshot-line">
+      本頁所有 <span class="mono">file:line</span> 對應上面這個 commit，點開會連到 GitHub 同一個 commit 的原始碼。Hermes 發版很快，日後行號可能位移，請以類別、函式名稱為主，行號為輔。
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ CONCEPTS FIRST ============ -->
+  <section class="section" id="concepts">
+    <p class="eyebrow">先懂這些詞 · 只列 gateway 自己的概念</p>
+    <h2 style="margin-bottom:8px">本頁詞彙</h2>
+    <div class="concepts">
+      <p class="intro">
+        下面只列 gateway 這一段會用到的詞（總覽頁的共通詞不重複）。中文名後面括號是原始碼裡用的英文，每個定義都對著原始碼確認過，點 <span class="mono">file:line</span> 可以跳到 GitHub 看出處。
+      </p>
+      <div class="concept-groups" id="conceptGroups"><!-- injected by JS --></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ TABS (full-bleed whiteboard) ============ -->
+<section class="section fullbleed" id="views">
+  <div class="bleed-inner">
+    <div class="wrap">
+      <h2 style="margin-bottom:6px">Gateway 子系統的實體與關係</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-view="v1" role="tab" aria-selected="true">
+          視角一 · 實體圖<span class="tnote">class diagram</span>
+        </button>
+        <button class="tab" data-view="v2" role="tab" aria-selected="false">
+          視角二 · 一則訊息在 gateway 裡走一遍<span class="tnote">sequence diagram</span>
+        </button>
+        <span class="clickhint">點任一張卡片，右側看完整說明</span>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 1 ===================== -->
+    <div class="view active" id="view-v1" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">這些方塊是 gateway 子系統裡真實存在的「東西」。平台轉接器在左、<b>GatewayRunner</b> 在中央當協調中樞、<b>AIAgent</b> 畫成右側的邊界（它的內部留在「Agent 與學習」頁）。每個方塊只標名字和一句目的，<b>點方塊</b>就從右側看完整說明（角色、關鍵方法、關係、限制）。<b>把游標移到方塊上</b>，只會點亮它牽到的關係線，其餘變淡。畫板比視窗大時，可在框內捲動。</p>
+
+      <div class="diagram-toolbar">
+        <div class="legend">
+          <span class="li"><span class="swatch sw-owns"></span>持有（owns）</span>
+          <span class="li"><span class="swatch sw-calls"></span>呼叫（calls）</span>
+          <span class="li"><span class="swatch sw-rw"></span>讀寫（reads-writes）</span>
+          <span class="li"><span class="swatch sw-isa"></span>繼承（is-a）</span>
+          <span class="li"><span class="dotc" style="background:var(--c-platform)"></span>平台轉接層</span>
+          <span class="li"><span class="dotc" style="background:var(--c-core)"></span>gateway 核心</span>
+          <span class="li"><span class="dotc" style="background:var(--c-persist)"></span>持久層</span>
+        </div>
+      </div>
+      </div><!-- /.wrap (view-v1 text column) -->
+
+      <div class="diagram-shell scaler">
+        <div class="canvas">
+          <div class="canvas-inner" id="canvas1">
+            <svg class="svg-edges" viewBox="0 0 1500 880" preserveAspectRatio="none" id="edges1">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#d2d8e2" stroke-width="1.4"/>
+                </marker>
+                <marker id="arrow-hot" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#4554d6" stroke-width="1.6"/>
+                </marker>
+                <marker id="tri-isa" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#d2d8e2" stroke-width="1.2"/>
+                </marker>
+                <marker id="tri-isa-hot" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#4554d6" stroke-width="1.4"/>
+                </marker>
+              </defs>
+            </svg>
+
+            <!-- cluster labels -->
+            <div class="cluster-label" style="left:40px; top:24px">平台轉接層</div>
+            <div class="cluster-label" style="left:560px; top:24px">gateway 核心</div>
+            <div class="cluster-label" style="left:1130px; top:24px">agent 邊界（細節在 Agent 頁）</div>
+            <div class="cluster-label" style="left:560px; top:610px">持久層</div>
+
+            <!-- ENTITY BOXES injected by JS (collapsed by default) -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 2 ===================== -->
+    <div class="view" id="view-v2" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">同一批實體當生命線（lifeline），從左到右照訊息流向排。箭頭是時間軸上的呼叫，由上往下發生。點上方的方塊、或點任一個帶編號的訊息步驟，右側開細節。虛線回程是結果或回覆往回送。這張是次要視角，主要看的是上面的實體圖。</p>
+
+      <div class="legend" style="margin-bottom:14px">
+        <span class="li"><span class="swatch" style="border-top:2px solid #7d8aa0"></span>呼叫（往前）</span>
+        <span class="li"><span class="swatch sw-rw" style="border-color:#b0407a"></span>回傳 / 回覆（往回）</span>
+        <span class="li"><span class="swatch" style="border-top:2px solid #6a8f1f"></span>自身內部動作</span>
+      </div>
+      </div><!-- /.wrap (view-v2 text column) -->
+
+      <div class="seq-shell scaler">
+        <div class="seq-inner" id="seq1">
+          <svg class="seq-svg" viewBox="0 0 1040 560" id="seqsvg">
+            <defs>
+              <marker id="seqarrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#7d8aa0" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-ret" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#b0407a" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-self" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#6a8f1f" stroke-width="1.3"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div><!-- /.bleed-inner -->
+</section>
+
+<main class="wrap">
+
+  <!-- ============ HONEST NOTE ============ -->
+  <section class="section" id="caveat">
+    <div class="note">
+      <p class="eyebrow">誠實提醒</p>
+      <p><a class="ref" data-ref="gateway/run.py:2475"><b>gateway/run.py</b></a> 是一個約 17.8k 行的巨型檔（god-file）。它這麼大不是因為核心邏輯複雜，多半是長年累積的多平台邊角情況：各平台的訊息格式、編輯能力、附件、執行緒、回覆路由限制都不一樣，這些差異一條一條疊在同一個檔裡。脊椎其實就是 <code>_handle_message</code>（<a class="ref" data-ref="gateway/run.py:7265"><b>:7265</b></a>）這條路徑，圖上刻意只標主線錨點，把邊角情況留在外面。</p>
+      <p><a class="ref" data-ref="gateway/platforms/api_server.py:744"><b>APIServerAdapter</b></a> 跑在 aiohttp 上，把 Hermes 對外變成一個 OpenAI 相容的 HTTP API。它的 <code>API_SERVER_KEY</code> 是<b>單一一把 Bearer token</b>：每個會執行 agent 的路由都先過 <code>_check_auth</code>（<a class="ref" data-ref="gateway/platforms/api_server.py:950"><b>:950</b></a>）用這把 key 比對，沒設這把 key 連伺服器都不會啟動。也就是說，這把 token 一旦外洩，等於把「能驅動 agent」的能力整個交出去，沒有更細的分權。</p>
+      <p>平台轉接器都是<b>單租戶的 bot 轉接器</b>：一個轉接器接一個 bot（一組 LINE channel token、一個 Telegram bot…），不是多租戶 SaaS 的概念。同一個 gateway 行程可以同時掛多個平台轉接器，但每個轉接器本身只服務它自己那一支 bot。</p>
+      <p>所有 <span class="mono">file:line</span> 對應 commit <b>2a10b83</b>（2026-06-22）。發版很快，日後行號很可能位移。</p>
+    </div>
+  </section>
+
+  <!-- ============ RELATED CROSS-LINKS ============ -->
+  <section class="section" id="related">
+    <div class="related">
+      <h3>相關</h3>
+      <p class="lead">這頁停在 gateway 把訊息交給 agent 的邊界。再往裡走、或往旁邊看：</p>
+      <div class="relgrid">
+        <a class="relcard" href="index.html">
+          <div class="rk">回到上一層</div>
+          <div class="rt">總覽 →</div>
+          <div class="rd">六群實體的全景圖，gateway 只是其中一塊。</div>
+        </a>
+        <a class="relcard" href="agent-learning.html">
+          <div class="rk">越過邊界</div>
+          <div class="rt">Agent 與學習 →</div>
+          <div class="rd">AIAgent 內部：對話迴圈、記憶預取與回寫、技能策展。</div>
+        </a>
+        <a class="relcard" href="tools-mcp.html">
+          <div class="rk">一輪之內</div>
+          <div class="rt">Tools 與 MCP →</div>
+          <div class="rd">agent 一輪裡怎麼派發工具呼叫、怎麼接外部 MCP 伺服器。</div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ DETAIL PANEL ============ -->
+<div class="panel-scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-hidden="true">
+  <div class="panel-head">
+    <div class="pmark" id="pmark"></div>
+    <div class="ph-t">
+      <div class="ph-name" id="pname">·</div>
+      <div class="ph-stereo" id="pstereo"></div>
+    </div>
+    <button class="panel-close" id="pclose" aria-label="關閉">×</button>
+  </div>
+  <div class="panel-body" id="pbody"></div>
+</aside>
+
+<!-- ============ FOOTER (shared) ============ -->
+<footer>
+  <div class="wrap">
+    <span>整理：陳展佑 Yo</span>
+    <span class="mono">Hermes v0.17.0 · commit 2a10b83 · 2026-06-22</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   REPO LINK HELPER
+   ONE helper. Every file:line in the page goes through it.
+   ============================================================ */
+var REPO_PREFIX='https://github.com/NousResearch/hermes-agent/blob/2a10b8384aa2ef0418063ca0829e491c5916fba4/';
+/* split on LAST ':' into file + line; build <prefix><file>#L<line> */
+function refURL(ref){
+  ref=String(ref).trim();
+  var i=ref.lastIndexOf(':');
+  var file=ref, line='';
+  if(i>0 && /^\d+$/.test(ref.slice(i+1))){ file=ref.slice(0,i); line=ref.slice(i+1); }
+  return REPO_PREFIX+file+(line?('#L'+line):'');
+}
+/* render a file:line ref as a clickable repo-linked chip */
+function refChip(ref){
+  if(!ref || ref==='—') return '';
+  return '<a class="ref" href="'+refURL(ref)+'" target="_blank" rel="noopener"><b>'+ref+'</b></a>';
+}
+/* hydrate any <a class="ref" data-ref="..."> placeholders in static HTML */
+function hydrateRefs(root){
+  (root||document).querySelectorAll('a.ref[data-ref]').forEach(function(a){
+    a.href=refURL(a.getAttribute('data-ref'));
+    a.target='_blank'; a.rel='noopener';
+  });
+}
+
+/* ============================================================
+   CONCEPTS DATA — gateway-specific ubiquitous language
+   each term: {zh, en, def, ref?}  — ref rendered via helper
+   ============================================================ */
+var CONCEPT_GROUPS=[
+  {key:'g-recv', title:'收訊息與轉接', items:[
+    {zh:'會話金鑰', en:'session key', def:'從一則訊息的來源（平台、聊天室、執行緒、使用者）算出來的字串，用來認出「這是哪一段對話」。同一把金鑰的訊息會被歸到同一個 session，也是 agent 快取的鍵。', ref:'gateway/session.py:678'},
+    {zh:'平台轉接器', en:'platform adapter', def:'把某個聊天平台的格式跟 Hermes 內部格式互轉的元件，每個平台一個。它是單租戶的：一個轉接器服務一支 bot。', ref:'gateway/platforms/base.py:2082'},
+    {zh:'訊息處理器', en:'message handler', def:'GatewayRunner 收到一則正規化訊息後的主處理流程：檢查授權、處理斜線指令、找或建 session、備好脈絡、驅動一輪、回傳回覆。', ref:'gateway/run.py:7265'},
+  ]},
+  {key:'g-drive', title:'驅動 agent', items:[
+    {zh:'每會話 agent 快取', en:'_agent_cache', def:'GatewayRunner 上的一個 OrderedDict，每個 session 快取一個 AIAgent 實例。下次同一個 session 來訊就重用，省下重建成本、保住提示快取。有上限，會用 LRU 淘汰最久沒用的。', ref:'gateway/run.py:2621'},
+    {zh:'自動接續', en:'auto-continue', def:'如果一輪被打斷（例如行程中斷），且中斷還夠新，下次進來時 gateway 會自動把那一輪接著跑完，而不是默默丟掉。新鮮度有個時間窗（預設一小時）。', ref:'gateway/run.py:534'},
+  ]},
+  {key:'g-send', title:'送回覆', items:[
+    {zh:'送出合約', en:'send contract', def:'回覆怎麼送回平台的約定。其中 REQUIRES_EDIT_FINALIZE 這個旗標標記：這個平台是不是需要一個明確的「收尾編輯」來結束串流訊息。多數平台不需要（預設 False），少數有「進行中」狀態的卡片介面才設 True。', ref:'gateway/platforms/base.py:2643'},
+    {zh:'狀態訊息', en:'status message', def:'agent 在思考或執行較久時，先送出去的提示性訊息（例如「處理中」）。支援的平台會在同一則訊息上更新狀態，而不是一直洗版。', ref:'gateway/run.py:390'},
+  ]},
+];
+
+function buildConcepts(){
+  var host=document.getElementById('conceptGroups');
+  var html='';
+  CONCEPT_GROUPS.forEach(function(g){
+    html+='<div class="cgroup '+g.key+'"><h3><span class="gdot"></span>'+g.title+'</h3><ul class="glist">';
+    g.items.forEach(function(it){
+      html+='<li><div class="gterm">'+it.zh+'<span class="en">'+it.en+'</span></div>'+
+            '<div class="gdef">'+it.def+(it.ref?(' '+refChip(it.ref)):'')+'</div></li>';
+    });
+    html+='</ul></div>';
+  });
+  host.innerHTML=html;
+}
+
+/* ============================================================
+   ENTITY DATA — gateway cluster, with real internals
+   purpose = collapsed one-liner; methods carry file:line refs
+   ============================================================ */
+var CLUSTER_COLOR = {
+  platform:'#2f7fd1', core:'#6048c4', tools:'#1f9e88',
+  provider:'#c4682f', persist:'#b0407a', learn:'#6a8f1f'
+};
+
+var ENTITIES = {
+  'base-adapter':{
+    name:'BasePlatformAdapter', cluster:'platform', stereo:'abstract base · gateway/platforms/base.py:2082',
+    purpose:'平台轉接基底（合約）',
+    methods:[
+      ['class BasePlatformAdapter(ABC)','gateway/platforms/base.py:2082'],
+      ['class MessageEvent（統一的內部訊息格式）','gateway/platforms/base.py:1600'],
+      ['REQUIRES_EDIT_FINALIZE = False（送出合約旗標）','gateway/platforms/base.py:2643'],
+      ['async def edit_message(..., finalize=False)','gateway/platforms/base.py:2672'],
+    ],
+    role:'所有平台轉接器的抽象基底（ABC）。定義「進來的訊息怎麼正規化、出去的回覆怎麼送、能不能編輯」這份合約。',
+    summary:'每個前端平台（LINE、Telegram、Discord、Slack、Matrix…）都要有一個轉接器，把該平台特有的訊息格式正規化成 Hermes 內部統一的 MessageEvent，反向也負責把 agent 的回覆轉回平台訊息。這個抽象基底就是那份合約。其中 REQUIRES_EDIT_FINALIZE 屬於「送出合約」：標記這個平台是否需要一個明確的收尾編輯來結束串流訊息，預設 False；少數有「進行中」狀態的卡片介面（像 DingTalk AI Cards）才覆寫成 True，影響回覆怎麼路由。',
+    rels:[
+      ['isa','被繼承','LineAdapter、APIServerAdapter 等具體轉接器都 <b>繼承</b>它（is-a）。'],
+      ['calls','被呼叫','<b>GatewayRunner</b> 透過它把回覆送回對應平台。']
+    ],
+    gotcha:'抽象層本身不含任何平台邏輯；每個平台的細節都在各自子類別裡，所以「某平台的轉接器在哪」要看那個平台自己的資料夾，不是這個基底檔。',
+    page:null
+  },
+  'line-adapter':{
+    name:'LineAdapter（代表各平台）', cluster:'platform', stereo:'concrete adapter · plugins/platforms/line/adapter.py:638',
+    purpose:'LINE 平台轉接（具體一支）',
+    methods:[
+      ['class LineAdapter(BasePlatformAdapter)','plugins/platforms/line/adapter.py:638'],
+      ['# REQUIRES_EDIT_FINALIZE stays False（LINE 不能編輯，只發新泡泡）','plugins/platforms/line/adapter.py:641'],
+      ['同層兄弟：telegram / discord / slack / matrix','plugins/platforms'],
+    ],
+    role:'具體平台轉接之一（LINE）。telegram、discord、slack、matrix 各有一個同層的兄弟，結構類似。',
+    summary:'這是「平台多型」的具體一支：收 LINE 的 webhook 事件，正規化成 MessageEvent 交給 gateway；agent 算完後再把回覆轉回 LINE 的訊息格式送出。把它選為代表，是因為各平台轉接器結構類似，看懂一個等於看懂一類。它的送出合約很單純：LINE 沒有編輯既有訊息的能力，永遠送新泡泡，所以 REQUIRES_EDIT_FINALIZE 保持基底的 False，檔內 :641 的註解正是寫「we always send fresh bubbles, never edit, so REQUIRES_EDIT_FINALIZE stays False」。',
+    rels:[
+      ['isa','繼承','<b>繼承</b> BasePlatformAdapter（is-a）。'],
+      ['calls','呼叫','把正規化後的 MessageEvent 交給 <b>GatewayRunner</b> 的訊息處理器。']
+    ],
+    gotcha:'各平台對訊息長度、格式、附件、能不能編輯的限制都不同，這些差異散在各自轉接器與 gateway 的回覆處理裡，不是集中一處。LineAdapter 只是看懂一類的樣板。',
+    page:null
+  },
+  'api-server':{
+    name:'APIServerAdapter', cluster:'platform', stereo:'aiohttp adapter · gateway/platforms/api_server.py:744',
+    purpose:'HTTP API 入口（aiohttp）',
+    methods:[
+      ['class APIServerAdapter(BasePlatformAdapter)','gateway/platforms/api_server.py:744'],
+      ['self._api_key = ...os.getenv("API_SERVER_KEY")','gateway/platforms/api_server.py:770'],
+      ['_check_auth(request)（驗 Bearer token）','gateway/platforms/api_server.py:950'],
+      ['web.Application(middlewares=…, client_max_size=…)','gateway/platforms/api_server.py:4383'],
+    ],
+    role:'特殊轉接器：不是聊天平台，而是跑一個 aiohttp 網頁伺服器，收 OpenAI 格式的 HTTP 請求，讓 Hermes 對外像一個 OpenAI 相容 API。',
+    summary:'它讓 Hermes 對外長得像一個 OpenAI 相容的 API。內部跑 aiohttp 網頁伺服器，路由 /v1/chat/completions、/v1/responses、/api/sessions 等端點，把 HTTP 請求接成跟其他平台一樣的內部流程，再以 JSON 或 SSE 串流回傳。要做程式化整合（不是真人聊天）就走這條。每個會執行 agent 的路由都先過 _check_auth(:950)，用 hmac.compare_digest 比對 Authorization 標頭裡的 Bearer token 與 API_SERVER_KEY。',
+    rels:[
+      ['isa','繼承','<b>繼承</b> BasePlatformAdapter，跟聊天轉接器同一層。'],
+      ['calls','呼叫','同樣把請求交給 <b>GatewayRunner</b> 跑一輪。']
+    ],
+    gotcha:'API_SERVER_KEY 是單一一把 Bearer token，守著所有會執行 agent 的路由，沒設這把 key 連伺服器都不啟動（connect() 直接拒絕）。它沒有更細的分權：這把 token 等於「能驅動 agent」的全部權限。aiohttp 是選用相依套件，沒裝時這個轉接器會警告並無法啟動；它也是唯一帶 HTTP 請求大小上限（client_max_size）的入口。',
+    page:null
+  },
+  'gateway':{
+    name:'GatewayRunner', cluster:'core', stereo:'orchestrator · gateway/run.py:2475',
+    purpose:'收訊息、管 session、驅動一輪',
+    methods:[
+      ['class GatewayRunner(多重 Mixin)','gateway/run.py:2475'],
+      ['_handle_message(event)（主處理流程）','gateway/run.py:7265'],
+      ['_handle_message_with_agent(event, source, …)（內層，跑 agent）','gateway/run.py:8835'],
+      ['self._agent_cache（OrderedDict，每 session 一個 agent）','gateway/run.py:2621'],
+      ['self._session_db = SessionDB()','gateway/run.py:2698'],
+    ],
+    role:'整個執行環境的協調中樞。收訊息、管 session、找或建 agent、備好歷史、驅動一輪、把回覆送回平台。一則訊息的旅程幾乎都由它指揮。',
+    summary:'gateway 子系統的中心。_handle_message(:7265) 是脊椎：檢查授權、處理斜線指令、找或建 session、備好脈絡、然後進到 _handle_message_with_agent(:8835) 這個內層去實際驅動 agent。它用 session key 在 _agent_cache（:2621，一個 OrderedDict）裡找出或建立對應的 AIAgent（每個 session 快取一個實例，保住提示快取），呼叫 agent.run_conversation 跑這一輪，結果再經回覆處理送回原平台。它同時持有 SessionDB（:2698），負責對話落地與 session 查詢。檔案約 17.8k 行，但主線就是這條。',
+    rels:[
+      ['owns','持有','<b>持有</b> _agent_cache 裡的 AIAgent 實例（每 session 一個），以及一個 SessionDB。'],
+      ['calls','呼叫','<b>呼叫</b> AIAgent.run_conversation 驅動一輪；接收平台轉接器送來的 MessageEvent。'],
+      ['rw','讀寫','透過 SessionDB <b>讀寫</b> 對話與 session 狀態。']
+    ],
+    gotcha:'_agent_cache 有上限（_AGENT_CACHE_MAX_SIZE），用 LRU 淘汰最久沒用的 session；被淘汰後，下次該 session 來訊得重建 agent、提示快取也跟著失效。這是「為什麼很久沒講話的對話第一句比較慢」的根因之一。另外它的多平台邊角邏輯讓這個檔長到約 17.8k 行，但驅動一輪的主線其實很短。',
+    page:null
+  },
+  'aiagent':{
+    name:'AIAgent', cluster:'core', stereo:'agent instance（邊界）· run_agent.py:333',
+    purpose:'被 gateway 驅動的 agent 本體',
+    methods:[
+      ['class AIAgent','run_agent.py:333'],
+      ['agent.run_conversation(user_message=…, task_id=…)','gateway/run.py:11258'],
+      ['（內部：對話迴圈、記憶、工具）','run_agent.py:333'],
+    ],
+    role:'一個 session 一個實例，被 gateway 的 _agent_cache 快取。gateway 在這裡把控制權交給 agent：呼叫 run_conversation 跑完一輪，拿回最終回覆。',
+    summary:'這是 gateway 與 agent 之間的<b>邊界</b>。從 gateway 的角度看，AIAgent 就是「一個有狀態的對話實例」：gateway 用 session key 找或建它、放進快取、呼叫 agent.run_conversation(:11258) 驅動一輪、拿回結果。它的內部（對話迴圈怎麼跑、怎麼用工具、怎麼記憶與學習）不屬於 gateway 子系統，留在「Agent 與學習」頁。本頁只畫到 gateway 把訊息交出去、再收回回覆這條邊界。',
+    rels:[
+      ['isa','被持有','被 <b>GatewayRunner</b> 的 _agent_cache 持有（每 session 一個實例）。'],
+      ['calls','被驅動','gateway <b>呼叫</b> run_conversation 跑一輪，這就是兩個子系統的交接點。']
+    ],
+    gotcha:'這張卡是邊界，刻意只畫到交接面。AIAgent 內部很大（run_agent.py 約 5.6k 行，對話迴圈另抽到 agent/conversation_loop.py），那些都在 Agent 頁說明。在這頁追「迴圈怎麼跑」會找錯地方。',
+    page:'agent-learning.html'
+  },
+  'sessiondb':{
+    name:'SessionDB', cluster:'persist', stereo:'sqlite persistence · hermes_state.py:667',
+    purpose:'會話／訊息持久層',
+    methods:[
+      ['class SessionDB','hermes_state.py:667'],
+      ['由 gateway 持有：self._session_db','gateway/run.py:2698'],
+      ['messages_fts_trigram（CJK trigram 全文檢索）','hermes_state.py:641'],
+    ],
+    role:'SQLite 持久層。對話落地、session 查詢、全文檢索都走它。gateway 直接持有一個實例（self._session_db）。',
+    summary:'從 gateway 的角度，SessionDB 是「對話與 session 狀態的家」。gateway 在初始化時就建好 self._session_db（:2698），每輪處理時透過它做 session 查詢、把訊息寫進 SQLite 落地、必要時做歷史檢索。它內部還有兩套 FTS5 全文檢索（含給中日韓用的 trigram 表），但那些細節屬於 State 頁。本頁只標出「gateway 持有它、靠它落地與查詢」這層關係。',
+    rels:[
+      ['isa','被持有','被 <b>GatewayRunner</b> 持有（self._session_db，:2698）。'],
+      ['rw','被讀寫','gateway <b>讀寫</b> 它做對話落地、session 查詢與歷史檢索。']
+    ],
+    gotcha:'初始化失敗時 gateway 只是把 self._session_db 設成 None 並記 WARNING（常見原因是 NFS 掛載的 HERMES_HOME 鎖定協定問題），此時 /resume、/title、/history、session 搜尋會失效，但 gateway 本身還是會起來。SessionDB 的完整內部在 State 頁。',
+    page:'state.html'
+  }
+};
+
+/* ============================================================
+   VIEW 1 — entity layout (design-space coords) + edges
+   platform col (left) → gateway core (center) → agent boundary (right)
+   sessiondb sits below the core.
+   ============================================================ */
+var LAYOUT={
+  'base-adapter':{x:40,   y:80},
+  'line-adapter':{x:40,   y:330},
+  'api-server':  {x:40,   y:560},
+  'gateway':     {x:560,  y:300},
+  'aiagent':     {x:1130, y:300},
+  'sessiondb':   {x:560,  y:650}
+};
+var BOX_W=222;
+
+/* Edges: [from, to, kind, label]
+   from/to are entity ids; ports auto-derived from box geometry. */
+var EDGES=[
+  ['line-adapter','base-adapter','isa','繼承'],
+  ['api-server','base-adapter','isa','繼承'],
+  ['line-adapter','gateway','calls','正規化 MessageEvent'],
+  ['api-server','gateway','calls','HTTP 請求'],
+  ['gateway','aiagent','owns','持有並驅動（每 session 快取）'],
+  ['gateway','sessiondb','rw','讀寫對話 / session'],
+  ['gateway','base-adapter','calls','送回覆（送出合約）']
+];
+
+/* approximate collapsed box heights for port math (collapsed = head + role) */
+var BOX_H=92;
+
+function boxRect(id){
+  var L=LAYOUT[id];
+  var el=document.querySelector('.entity[data-entity="'+id+'"]');
+  var h=el?el.offsetHeight:BOX_H;
+  return {x:L.x, y:L.y, w:BOX_W, h:h, cx:L.x+BOX_W/2, cy:L.y+h/2};
+}
+/* pick connection ports on box edges facing each other */
+function ports(a,b){
+  var dx=b.cx-a.cx, dy=b.cy-a.cy;
+  function side(r,toX,toY){
+    if(Math.abs(toX-r.cx) > Math.abs(toY-r.cy)){
+      return toX>r.cx ? {x:r.x+r.w, y:r.cy} : {x:r.x, y:r.cy};
+    } else {
+      return toY>r.cy ? {x:r.cx, y:r.y+r.h} : {x:r.cx, y:r.y};
+    }
+  }
+  return [side(a,b.cx,b.cy), side(b,a.cx,a.cy)];
+}
+
+function buildEntities(){
+  var host=document.getElementById('canvas1');
+  Object.keys(ENTITIES).forEach(function(id){
+    var e=ENTITIES[id], L=LAYOUT[id];
+    var box=document.createElement('div');
+    box.className='entity '+e.cluster+(id==='aiagent'?' boundary':'');
+    box.setAttribute('data-entity',id);
+    box.setAttribute('data-detail',id);
+    box.setAttribute('role','button');
+    box.setAttribute('tabindex','0');
+    box.style.left=L.x+'px'; box.style.top=L.y+'px';
+    box.innerHTML=
+      '<span class="etag"></span>'+
+      '<div class="ehead">'+
+        '<span class="ename">'+e.name.replace(/（.*?）/,'')+'</span>'+
+      '</div>'+
+      '<div class="erole">'+e.purpose+'</div>';
+    host.appendChild(box);
+  });
+}
+
+function buildEdges(){
+  var svg=document.getElementById('edges1');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  EDGES.forEach(function(e,i){
+    var from=e[0], to=e[1], kind=e[2], label=e[3];
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    var tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+    var d, lx, ly;
+    if(from===to){
+      var r=boxRect(from);
+      var sx=r.x+r.w-26, sy=r.y, ex=r.x+r.w-6, ey=r.y;
+      d='M '+sx+' '+sy+' C '+(sx)+' '+(sy-26)+' '+(ex)+' '+(ey-26)+' '+ex+' '+ey;
+      lx=(sx+ex)/2; ly=sy-30;
+    } else {
+      var a=boxRect(from), b=boxRect(to);
+      var p=ports(a,b);
+      var f=p[0], t=p[1];
+      var mx=(f.x+t.x)/2, my=(f.y+t.y)/2;
+      var dx=t.x-f.x, dy=t.y-f.y;
+      var len=Math.sqrt(dx*dx+dy*dy)||1;
+      var px=-dy/len, py=dx/len;
+      var bend=Math.min(40, len*0.12);
+      var cx=mx+px*bend, cy=my+py*bend;
+      d='M '+f.x+' '+f.y+' Q '+cx+' '+cy+' '+t.x+' '+t.y;
+      lx=0.25*f.x+0.5*cx+0.25*t.x; ly=0.25*f.y+0.5*cy+0.25*t.y;
+    }
+    path.setAttribute('d',d);
+    path.setAttribute('class','edge-path');
+    path.setAttribute('data-edge',i);
+    path.setAttribute('data-from',from); path.setAttribute('data-to',to); path.setAttribute('data-kind',kind);
+    path.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+    svg.appendChild(path);
+    var tw=label.length*7.2+8;
+    bg.setAttribute('x',lx-tw/2); bg.setAttribute('y',ly-9);
+    bg.setAttribute('width',tw); bg.setAttribute('height',16);
+    bg.setAttribute('rx',4); bg.setAttribute('class','edge-label-bg'); bg.setAttribute('data-elabel',i);
+    svg.appendChild(bg);
+    tx.setAttribute('x',lx); tx.setAttribute('y',ly+3);
+    tx.setAttribute('text-anchor','middle'); tx.setAttribute('class','edge-label'); tx.setAttribute('data-elabel',i);
+    tx.textContent=label;
+    svg.appendChild(tx);
+  });
+}
+
+/* focus+context: highlight one entity's edges, dim the rest */
+function focusEntity(id){
+  var paths=document.querySelectorAll('.edge-path');
+  paths.forEach(function(p){
+    var on = p.getAttribute('data-from')===id || p.getAttribute('data-to')===id;
+    p.classList.toggle('hot',on);
+    p.classList.toggle('dim',!on);
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', on
+      ? (kind==='isa'?'url(#tri-isa-hot)':'url(#arrow-hot)')
+      : (kind==='isa'?'url(#tri-isa)':'url(#arrow)'));
+  });
+  EDGES.forEach(function(e,i){
+    var on = e[0]===id || e[1]===id;
+    document.querySelectorAll('[data-elabel="'+i+'"]').forEach(function(n){
+      n.classList.toggle('hot',on); n.classList.toggle('dim',!on);
+    });
+  });
+  document.querySelectorAll('.entity').forEach(function(el){
+    el.classList.toggle('lit', el.getAttribute('data-entity')===id);
+  });
+}
+function clearFocus(){
+  document.querySelectorAll('.edge-path').forEach(function(p){
+    p.classList.remove('hot','dim');
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+  });
+  document.querySelectorAll('.edge-label,.edge-label-bg').forEach(function(n){n.classList.remove('hot','dim');});
+  document.querySelectorAll('.entity.lit').forEach(function(el){el.classList.remove('lit');});
+}
+
+/* ============================================================
+   VIEW 2 — sequence diagram layout (一則訊息在 gateway 裡走一遍)
+   ============================================================ */
+var SEQ_ACTORS = [
+  {id:'line-adapter', label:'PlatformAdapter', sub:'line / api_server', x:95},
+  {id:'gateway',      label:'GatewayRunner',   sub:'run.py',           x:355},
+  {id:'sessiondb',    label:'SessionDB',       sub:'hermes_state',     x:600},
+  {id:'aiagent',      label:'AIAgent',         sub:'run_agent（邊界）', x:870}
+];
+var SEQ_MSGS = [
+  ['line-adapter','gateway', '1','正規化成 MessageEvent，進 _handle_message',120,'fwd'],
+  ['gateway','gateway',      '2','檢查授權 / 斜線指令 / session key',164,'self'],
+  ['gateway','sessiondb',    '3','找或建 session、取歷史',224,'fwd'],
+  ['gateway','aiagent',      '4','找或建快取 agent · run_conversation',268,'fwd'],
+  ['aiagent','aiagent',      '5','跑完這一輪（內部，見 Agent 頁）',312,'self'],
+  ['aiagent','gateway',      '6','最終回覆字串',372,'ret'],
+  ['gateway','sessiondb',    '7','落地對話 / session 狀態',416,'fwd'],
+  ['gateway','line-adapter', '8','依送出合約把回覆送回平台',460,'ret']
+];
+function actorX(id){for(var i=0;i<SEQ_ACTORS.length;i++){if(SEQ_ACTORS[i].id===id)return SEQ_ACTORS[i].x;}return 0;}
+
+function buildSequence(){
+  var holder=document.getElementById('seq1');
+  var svg=document.getElementById('seqsvg');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  Array.prototype.slice.call(holder.querySelectorAll('.seq-actorbox,.seq-step')).forEach(function(n){n.remove();});
+  var topY=78, botY=520;
+  SEQ_ACTORS.forEach(function(a){
+    var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',a.x); line.setAttribute('y1',topY);
+    line.setAttribute('x2',a.x); line.setAttribute('y2',botY);
+    line.setAttribute('class','seq-lifeline');
+    svg.appendChild(line);
+    var box=document.createElement('div');
+    box.className='seq-actorbox'; box.style.left=a.x+'px'; box.style.top='18px';
+    box.setAttribute('data-entity',a.id);
+    box.innerHTML='<div class="an">'+a.label+'</div><div class="ar">'+a.sub+'</div>';
+    var col=CLUSTER_COLOR[(ENTITIES[a.id]||{}).cluster]||'#4554d6';
+    box.style.borderTopColor=col; box.style.borderTopWidth='3px';
+    holder.appendChild(box);
+  });
+  SEQ_MSGS.forEach(function(m){
+    var x1=actorX(m[0]), x2=actorX(m[1]), y=m[4], kind=m[5];
+    var cls=kind==='ret'?'ret':kind==='self'?'self':'';
+    var mk=kind==='ret'?'url(#seqarrow-ret)':kind==='self'?'url(#seqarrow-self)':'url(#seqarrow)';
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var d;
+    if(kind==='self'){ d='M '+x1+' '+y+' h 46 v 26 h -46'; }
+    else { d='M '+x1+' '+y+' L '+x2+' '+y; }
+    path.setAttribute('d',d); path.setAttribute('class','seq-arrow '+cls);
+    path.setAttribute('marker-end',mk);
+    svg.appendChild(path);
+    var numt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    numt.setAttribute('x',(kind==='self'? x1+10 : Math.min(x1,x2)+8));
+    numt.setAttribute('y',y-6); numt.setAttribute('class','seq-msgnum');
+    numt.textContent=m[2];
+    svg.appendChild(numt);
+    var lx=kind==='self'? x1+54 : (x1+x2)/2;
+    var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lt.setAttribute('x',lx); lt.setAttribute('y', kind==='self'? y+18 : y-6);
+    lt.setAttribute('text-anchor', kind==='self'?'start':'middle');
+    lt.setAttribute('class','seq-msglabel'); lt.textContent=m[3];
+    svg.appendChild(lt);
+    var target = kind==='ret'? m[0] : m[1];
+    if(kind==='self') target=m[0];
+    var step=document.createElement('div');
+    step.className='seq-step'; step.setAttribute('data-entity',target);
+    var hx=Math.min(x1,x2), hw=Math.abs(x2-x1)||60;
+    step.style.left=(hx-4)+'px'; step.style.top=(y-14)+'px';
+    step.style.width=(hw+8)+'px'; step.style.height=(kind==='self'?40:22)+'px';
+    step.title='步驟 '+m[2]+'：'+m[3];
+    holder.appendChild(step);
+  });
+}
+
+/* ============================================================
+   DETAIL PANEL
+   ============================================================ */
+var scrim=document.getElementById('scrim');
+var panel=document.getElementById('panel');
+var pbody=document.getElementById('pbody');
+var KIND_LABEL={owns:'持有（owns）',calls:'呼叫（calls）',rw:'讀寫（reads-writes）',isa:'繼承（is-a）'};
+var KIND_CLASS={owns:'r-owns',calls:'r-calls',rw:'r-rw',isa:'r-isa'};
+
+function openPanel(id){
+  var e=ENTITIES[id]; if(!e)return;
+  document.getElementById('pname').textContent=e.name;
+  document.getElementById('pstereo').textContent=e.stereo;
+  var col=CLUSTER_COLOR[e.cluster]||'#4554d6';
+  document.getElementById('pmark').style.background=col;
+  var html='';
+  html+='<p class="role-line">'+e.role+'</p>';
+  html+='<h4>它是什麼 / 做什麼</h4><p>'+e.summary+'</p>';
+  html+='<h4>關鍵方法 / 欄位</h4><ul class="keymethods">';
+  e.methods.forEach(function(m){
+    html+='<li><span class="mono">'+m[0]+'</span>';
+    if(m[1] && m[1]!=='—'){html+=' '+refChip(m[1]);}
+    html+='</li>';
+  });
+  html+='</ul>';
+  html+='<h4>跟鄰居的關係</h4><ul class="rels">';
+  e.rels.forEach(function(r){
+    html+='<li class="'+(KIND_CLASS[r[0]]||'')+'"><span class="relverb">'+(KIND_LABEL[r[0]]||r[0])+'</span>：'+r[2]+'</li>';
+  });
+  html+='</ul>';
+  if(e.gotcha){
+    html+='<h4>限制 / 容易誤解的地方</h4><div class="gotcha"><p>'+e.gotcha+'</p></div>';
+  }
+  if(e.page){
+    html+='<div style="margin-top:18px"><a class="panel-detaillink" href="'+e.page+'">細節頁：'+e.page+' →</a></div>';
+  } else {
+    html+='<div style="margin-top:18px"><span class="panel-detaillink none">（gateway 子系統內，無另開細節頁）</span></div>';
+  }
+  pbody.innerHTML=html;
+  pbody.scrollTop=0;
+  panel.classList.add('open'); scrim.classList.add('open');
+  panel.setAttribute('aria-hidden','false');
+  document.querySelectorAll('.entity.sel,.seq-actorbox.sel,.seq-step.sel').forEach(function(n){n.classList.remove('sel');});
+  document.querySelectorAll('[data-entity="'+id+'"]').forEach(function(n){n.classList.add('sel');});
+  focusEntity(id);
+}
+function closePanel(){
+  panel.classList.remove('open'); scrim.classList.remove('open');
+  panel.setAttribute('aria-hidden','true');
+  document.querySelectorAll('.sel').forEach(function(n){n.classList.remove('sel');});
+  clearFocus();
+}
+document.getElementById('pclose').addEventListener('click',closePanel);
+scrim.addEventListener('click',closePanel);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePanel();});
+
+/* ============================================================
+   INTERACTIONS — detail open, hover focus
+   ============================================================ */
+document.addEventListener('click',function(ev){
+  var det=ev.target.closest('[data-detail]');
+  if(det){ openPanel(det.getAttribute('data-detail')); ev.stopPropagation(); return; }
+  var seqt=ev.target.closest('.seq-actorbox,.seq-step');
+  if(seqt){ openPanel(seqt.getAttribute('data-entity')); return; }
+});
+
+/* keyboard: Enter / Space on a focused card opens the drawer */
+document.addEventListener('keydown',function(ev){
+  if(ev.key!=='Enter' && ev.key!==' ') return;
+  var card=ev.target.closest && ev.target.closest('.entity[data-detail]');
+  if(card){ ev.preventDefault(); openPanel(card.getAttribute('data-detail')); }
+});
+
+/* hover an entity → focus its edges */
+document.addEventListener('mouseover',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){ focusEntity(card.getAttribute('data-entity')); }
+});
+document.addEventListener('mouseout',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){
+    var to=ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('.entity');
+    if(!to) clearFocus();
+  }
+});
+
+/* ============================================================
+   TABS + responsive scaling
+   ============================================================ */
+var tabs=document.querySelectorAll('.tab');
+tabs.forEach(function(tb){
+  tb.addEventListener('click',function(){
+    tabs.forEach(function(x){x.classList.remove('active'); x.setAttribute('aria-selected','false');});
+    tb.classList.add('active'); tb.setAttribute('aria-selected','true');
+    var v=tb.getAttribute('data-view');
+    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+    document.getElementById('view-'+v).classList.add('active');
+    if(v==='v1'){ requestAnimationFrame(function(){buildEdges(); fitCanvas();}); }
+  });
+});
+
+/* big whiteboard: no shrink-to-fit. The .canvas wrapper scrolls in both
+   directions; the page itself stays put. */
+function fitCanvas(){
+  var inner=document.getElementById('canvas1');
+  if(!inner)return;
+  inner.style.transform='none';
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+buildConcepts();
+hydrateRefs(document);   // hydrate static refs in the caveat note
+buildEntities();
+buildEdges();
+buildSequence();
+fitCanvas();
+</script>
+
+</body>
+</html>

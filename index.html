@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes 架構解說 · 總覽</title>
+<style>
+/* ============================================================
+   SHARED DESIGN SYSTEM  (carried from v2 verbatim core)
+   ============================================================ */
+:root{
+  --bg:        #f7f8fa;
+  --bg-card:   #ffffff;
+  --bg-sunken: #f0f2f5;
+  --ink:       #1c2330;
+  --ink-soft:  #4a5468;
+  --ink-faint: #8b94a6;
+  --line:      #e2e6ec;
+  --line-soft: #eceff3;
+  --accent:    #4554d6;       /* indigo accent */
+  --accent-ink:#3340b8;
+  --accent-bg: #eef0fd;
+  --accent-bg2:#e4e7fb;
+  --warn-bg:   #fff8ec;
+  --warn-line: #f0dcb0;
+  --warn-ink:  #8a6418;
+  --ok:        #2f9e6f;
+  /* cluster accent tints (informal map) */
+  --c-platform:#2f7fd1; --c-platform-bg:#eaf3fc;
+  --c-core:    #6048c4; --c-core-bg:#efebfb;
+  --c-tools:   #1f9e88; --c-tools-bg:#e6f5f1;
+  --c-provider:#c4682f; --c-provider-bg:#fbf0e7;
+  --c-persist: #b0407a; --c-persist-bg:#fbe9f2;
+  --c-learn:   #6a8f1f; --c-learn-bg:#f1f6e4;
+  --radius:    10px;
+  --radius-sm: 6px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+          "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif;
+  --shadow: 0 1px 2px rgba(20,28,46,.04), 0 2px 8px rgba(20,28,46,.05);
+  --shadow-lift: 0 4px 16px rgba(20,28,46,.10);
+  --maxw: 1180px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); line-height:1.7;
+  font-size:16px; -webkit-font-smoothing:antialiased;
+}
+code, .mono{font-family:var(--mono); font-size:.86em}
+a{color:var(--accent-ink); text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{line-height:1.3; font-weight:680}
+h2{font-size:1.4rem; margin:0 0 .2em}
+h3{font-size:1.06rem; margin:0 0 .3em}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+/* ---- file:line reference chip + repo link (shared) ---- */
+.ref{
+  font-family:var(--mono); font-size:.8em;
+  background:var(--bg-sunken); color:var(--ink-soft);
+  border:1px solid var(--line); border-radius:5px;
+  padding:.05em .42em; white-space:nowrap; display:inline-block;
+}
+.ref b{color:var(--accent-ink); font-weight:600}
+a.ref{cursor:pointer; transition:background .12s, border-color .12s}
+a.ref:hover{background:var(--accent-bg); border-color:var(--accent-bg2); text-decoration:none}
+a.ref::after{content:" \2197"; font-size:.85em; color:var(--ink-faint)}
+a.ref:hover::after{color:var(--accent-ink)}
+
+/* ---- persistent top nav (shared) ---- */
+.topnav{
+  position:sticky; top:0; z-index:80;
+  background:rgba(247,248,250,.88); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topnav .wrap{display:flex; align-items:center; gap:6px; height:56px; flex-wrap:wrap}
+.brand{font-weight:720; letter-spacing:.2px; margin-right:10px; white-space:nowrap}
+.brand small{color:var(--ink-faint); font-weight:500; font-size:.7rem; margin-left:6px}
+.navlinks{display:flex; gap:2px; flex-wrap:wrap}
+.navlinks a{
+  color:var(--ink-soft); font-size:.85rem; padding:5px 11px;
+  border-radius:7px; white-space:nowrap;
+}
+.navlinks a:hover{background:var(--bg-sunken); text-decoration:none}
+.navlinks a.active{background:var(--accent-bg); color:var(--accent-ink); font-weight:600}
+
+.section{margin:40px 0}
+/* full-bleed: break a block out of the readable column to span the viewport
+   width. used by the diagram section so the wide whiteboard fits with little
+   or no horizontal scroll. prose sections keep the ~1180px column. */
+.fullbleed{
+  width:96vw;
+  margin-left:calc(50% - 48vw);
+  margin-right:calc(50% - 48vw);
+}
+.fullbleed .bleed-inner{max-width:none; padding:0 24px}
+.eyebrow{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 6px;
+}
+.lead{color:var(--ink-soft); max-width:76ch}
+
+/* ---- snapshot stamp (shared) ---- */
+.stamp{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:.78rem;
+  background:var(--bg-card); border:1px solid var(--line);
+  border-radius:99px; padding:5px 14px; color:var(--ink-soft);
+  box-shadow:var(--shadow);
+}
+.stamp .dot{width:7px; height:7px; border-radius:50%; background:var(--ok)}
+.stamp b{color:var(--ink); font-weight:600}
+
+/* ---- footer (shared) ---- */
+footer{
+  border-top:1px solid var(--line); margin-top:60px;
+  padding:26px 0 50px; color:var(--ink-faint); font-size:.8rem;
+}
+footer .wrap{display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; align-items:center}
+footer .mono{font-family:var(--mono)}
+
+/* hero */
+.hero{padding:40px 0 8px}
+.hero h1{font-size:2.05rem; margin:.1em 0 .35em; letter-spacing:-.01em}
+.hero .sub{color:var(--ink-soft); font-size:1.04rem; max-width:74ch; margin:0 0 18px}
+.snapshot-line{color:var(--ink-faint); font-size:.84rem; margin-top:12px; max-width:72ch}
+
+/* ============================================================
+   CONCEPTS SECTION (v3 new) — ubiquitous language glossary
+   ============================================================ */
+.concepts{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  padding:26px 28px 30px;
+}
+.concepts .intro{color:var(--ink-soft); max-width:78ch; margin:0 0 4px}
+.concept-groups{
+  display:grid; grid-template-columns:repeat(2,1fr); gap:22px 30px; margin-top:22px;
+}
+@media (max-width:760px){ .concept-groups{grid-template-columns:1fr} }
+.cgroup h3{
+  font-size:.96rem; margin:0 0 10px; display:flex; align-items:center; gap:8px;
+}
+.cgroup h3 .gdot{width:10px; height:10px; border-radius:3px; flex:0 0 auto}
+.glist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px}
+.glist li{padding-left:2px}
+.gterm{font-weight:680; color:var(--ink); font-size:.92rem}
+.gterm .en{font-family:var(--mono); font-size:.78rem; font-weight:600; color:var(--accent-ink); margin-left:5px}
+.gdef{color:var(--ink-soft); font-size:.86rem; line-height:1.55; margin-top:2px}
+.gdef .ref{margin-left:4px}
+.cgroup.g-conv h3 .gdot{background:var(--c-platform)}
+.cgroup.g-reason h3 .gdot{background:var(--c-core)}
+.cgroup.g-mem h3 .gdot{background:var(--c-learn)}
+.cgroup.g-persist h3 .gdot{background:var(--c-persist)}
+
+/* ============================================================
+   VIEW TABS
+   ============================================================ */
+.tabs{display:flex; gap:6px; margin:6px 0 6px; flex-wrap:wrap; align-items:center}
+.tab{
+  font-family:var(--sans); font-size:.9rem; font-weight:600;
+  color:var(--ink-soft); background:var(--bg-card);
+  border:1px solid var(--line); border-radius:9px;
+  padding:8px 16px; cursor:pointer; transition:all .14s;
+}
+.tab:hover{background:var(--bg-sunken); color:var(--ink)}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+.tab .tnote{font-weight:500; font-size:.78rem; opacity:.8; margin-left:6px}
+.tab.active .tnote{opacity:.9}
+/* quiet sub-label: the cards in the diagram are clickable */
+.clickhint{
+  color:var(--ink-faint); font-size:.8rem; font-weight:500;
+  margin-left:4px; display:inline-flex; align-items:center; gap:5px;
+}
+.clickhint::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--accent); opacity:.55; flex:0 0 auto;
+}
+.view{display:none}
+.view.active{display:block}
+.viewhint{color:var(--ink-faint); font-size:.85rem; margin:4px 0 14px}
+.viewhint b{color:var(--ink-soft)}
+
+/* ============================================================
+   VIEW 1 — informal class diagram (entity map)
+   ============================================================ */
+.diagram-shell{position:relative}
+.canvas{
+  position:relative; width:100%;
+  border:1px solid var(--line); border-radius:14px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(120,130,150,.13) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--bg-card);
+  box-shadow:var(--shadow);
+  /* roomy whiteboard: the canvas itself scrolls in both directions, page stays put */
+  overflow:auto; -webkit-overflow-scrolling:touch;
+  max-height:80vh;
+}
+/* fixed design coordinate space — big whiteboard, no shrink-to-fit */
+.canvas-inner{position:relative; width:1720px; height:1000px; margin:0}
+.svg-edges{position:absolute; inset:0; width:1720px; height:1000px; pointer-events:none; z-index:1}
+/* edges DE-EMPHASIZED by default (v3 fix #4) */
+.edge-path{fill:none; stroke:#d2d8e2; stroke-width:1.2; transition:stroke .15s, stroke-width .15s, opacity .15s}
+.edge-path.hot{stroke:var(--accent); stroke-width:2.4; opacity:1}
+.edge-path.dim{opacity:.32}
+.edge-label{
+  font-family:var(--mono); font-size:11px; fill:var(--ink-faint);
+  transition:fill .15s, opacity .15s; opacity:0;
+}
+.edge-label.hot{fill:var(--accent-ink); opacity:1}
+.edge-label.dim{opacity:0}
+.edge-label-bg{fill:var(--bg-card); opacity:0; transition:opacity .15s}
+.edge-label-bg.hot{opacity:.94}
+/* arrow markers dim by default, lit on .hot via JS marker swap */
+
+/* class boxes — compact static tiles, whole card opens the drawer (v4) */
+.entity{
+  position:absolute; z-index:2;
+  width:214px; background:var(--bg-card);
+  border:1.5px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow);
+  transition:transform .12s, box-shadow .14s, border-color .14s;
+  overflow:hidden; cursor:pointer; user-select:none;
+}
+.entity:hover{transform:translateY(-2px); box-shadow:var(--shadow-lift)}
+.entity:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.entity.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.entity.lit{box-shadow:0 0 0 2px var(--accent-bg2), var(--shadow-lift)}
+.entity .ehead{
+  padding:10px 13px 4px; display:flex; align-items:center; gap:7px;
+}
+.entity .ename{font-weight:700; font-size:.95rem; letter-spacing:.1px}
+.entity .erole{
+  padding:0 13px 11px; font-size:.78rem; color:var(--ink-soft);
+  line-height:1.45;
+}
+.entity .etag{
+  position:absolute; top:0; left:0; width:5px; height:100%;
+}
+/* cluster colourings */
+.entity.platform{border-color:#cfe1f4}
+.entity.platform .etag{background:var(--c-platform)}
+.entity.platform .ename{color:var(--c-platform)}
+.entity.core{border-color:#dcd5f4}
+.entity.core .etag{background:var(--c-core)}
+.entity.core .ename{color:var(--c-core)}
+.entity.tools{border-color:#cdeae3}
+.entity.tools .etag{background:var(--c-tools)}
+.entity.tools .ename{color:var(--c-tools)}
+.entity.provider{border-color:#f0ddca}
+.entity.provider .etag{background:var(--c-provider)}
+.entity.provider .ename{color:var(--c-provider)}
+.entity.persist{border-color:#f4d3e3}
+.entity.persist .etag{background:var(--c-persist)}
+.entity.persist .ename{color:var(--c-persist)}
+.entity.learn{border-color:#e3edca}
+.entity.learn .etag{background:var(--c-learn)}
+.entity.learn .ename{color:var(--c-learn)}
+
+/* cluster labels (informal hand-drawn group hint) */
+.cluster-label{
+  position:absolute; z-index:1; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:600;
+  border:1px dashed var(--line); border-radius:99px;
+  padding:2px 11px; background:rgba(255,255,255,.6);
+}
+
+/* legend + toolbar */
+.diagram-toolbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:14px 0 4px}
+.minibtn{
+  font-size:.78rem; font-weight:600; color:var(--ink-soft);
+  background:var(--bg-card); border:1px solid var(--line); border-radius:8px;
+  padding:5px 12px; cursor:pointer; transition:all .12s;
+}
+.minibtn:hover{background:var(--bg-sunken); color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:14px; font-size:.8rem; color:var(--ink-soft)}
+.legend .li{display:inline-flex; align-items:center; gap:6px}
+.legend .swatch{width:24px; height:0; border-top-width:2px; border-top-style:solid}
+.legend .sw-owns{border-color:var(--c-core)}
+.legend .sw-calls{border-color:#9aa4b6}
+.legend .sw-rw{border-color:var(--c-persist); border-top-style:dashed}
+.legend .sw-isa{border-color:#9aa4b6; border-top-style:dotted}
+.legend .dotc{width:11px;height:11px;border-radius:3px}
+
+/* ============================================================
+   VIEW 2 — informal sequence diagram
+   ============================================================ */
+.seq-shell{
+  border:1px solid var(--line); border-radius:14px;
+  background:var(--bg-card); box-shadow:var(--shadow);
+  overflow-x:auto;
+}
+.seq-inner{position:relative; width:1140px; min-width:1140px; height:720px; margin:0 auto}
+.seq-svg{position:absolute; inset:0; width:1140px; height:720px}
+.seq-lifeline{stroke:#c4ccd9; stroke-width:1.4; stroke-dasharray:4 4}
+.seq-arrow{stroke:#7d8aa0; stroke-width:1.6; fill:none}
+.seq-arrow.ret{stroke:#b0407a; stroke-dasharray:5 4}
+.seq-arrow.self{stroke:#6a8f1f}
+.seq-msglabel{font-family:var(--sans); font-size:12px; fill:var(--ink)}
+.seq-msgnum{font-family:var(--mono); font-size:11px; fill:var(--accent); font-weight:700}
+.seq-actorbox{
+  position:absolute; transform:translateX(-50%);
+  width:132px; text-align:center; cursor:pointer; z-index:3;
+  border-radius:10px; padding:8px 5px; box-shadow:var(--shadow);
+  border:1.5px solid var(--line); background:var(--bg-card);
+  transition:transform .12s, box-shadow .14s;
+}
+.seq-actorbox:hover{transform:translateX(-50%) translateY(-2px); box-shadow:var(--shadow-lift)}
+.seq-actorbox.sel{box-shadow:0 0 0 3px var(--accent-bg2), var(--shadow-lift)}
+.seq-actorbox .an{font-weight:700; font-size:.82rem}
+.seq-actorbox .ar{font-size:.66rem; color:var(--ink-faint); font-family:var(--mono)}
+.seq-step{
+  position:absolute; z-index:3; cursor:pointer;
+  border-radius:6px; transition:background .12s;
+}
+.seq-step:hover{background:rgba(69,84,214,.08)}
+.seq-step.sel{background:rgba(69,84,214,.13); outline:1.5px solid var(--accent-bg2)}
+
+/* ============================================================
+   DETAIL PANEL (shared by both views) — slide-in side panel
+   ============================================================ */
+.panel-scrim{
+  position:fixed; inset:0; background:rgba(20,28,46,.34);
+  z-index:90; opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.panel-scrim.open{opacity:1; pointer-events:auto}
+.panel{
+  position:fixed; top:0; right:0; height:100%; width:min(540px,94vw);
+  background:var(--bg-card); z-index:95; box-shadow:-8px 0 30px rgba(20,28,46,.16);
+  transform:translateX(100%); transition:transform .24s cubic-bezier(.4,.0,.2,1);
+  display:flex; flex-direction:column;
+}
+.panel.open{transform:translateX(0)}
+.panel-head{
+  padding:18px 22px 14px; border-bottom:1px solid var(--line);
+  display:flex; align-items:flex-start; gap:12px;
+}
+.panel-head .pmark{
+  flex:0 0 auto; width:10px; height:38px; border-radius:4px; margin-top:2px;
+  background:var(--accent);
+}
+.panel-head .ph-t{flex:1 1 auto; min-width:0}
+.panel-head .ph-name{font-size:1.18rem; font-weight:720; letter-spacing:.1px}
+.panel-head .ph-stereo{font-family:var(--mono); font-size:.72rem; color:var(--ink-faint); margin-top:2px}
+.panel-close{
+  flex:0 0 auto; cursor:pointer; border:1px solid var(--line);
+  background:var(--bg-sunken); border-radius:8px; width:32px; height:32px;
+  font-size:1.1rem; color:var(--ink-soft); line-height:1;
+}
+.panel-close:hover{background:var(--line-soft); color:var(--ink)}
+.panel-body{padding:18px 22px 40px; overflow-y:auto; flex:1 1 auto}
+.panel-body h4{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); margin:20px 0 7px; font-weight:600;
+}
+.panel-body h4:first-child{margin-top:2px}
+.panel-body p{margin:.55em 0; color:var(--ink-soft); font-size:.92rem}
+.panel-body .role-line{font-size:1rem; color:var(--ink); margin:2px 0 4px}
+.panel-body ul.keymethods{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:7px}
+.panel-body ul.keymethods li{font-size:.86rem; color:var(--ink-soft)}
+.panel-body ul.rels{list-style:none; padding:0; margin:6px 0; display:flex; flex-direction:column; gap:6px}
+.panel-body ul.rels li{font-size:.88rem; color:var(--ink-soft); padding-left:18px; position:relative}
+.panel-body ul.rels li::before{
+  content:""; position:absolute; left:0; top:.62em; width:9px; height:9px;
+  border-radius:2px; background:var(--ink-faint);
+}
+.panel-body ul.rels li.r-owns::before{background:var(--c-core)}
+.panel-body ul.rels li.r-calls::before{background:#9aa4b6}
+.panel-body ul.rels li.r-rw::before{background:var(--c-persist)}
+.panel-body ul.rels li.r-isa::before{background:var(--c-platform)}
+.panel-body .relverb{font-weight:700; color:var(--ink)}
+.gotcha{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:10px; padding:13px 16px; margin:10px 0 4px;
+}
+.gotcha p{color:#5f4d22; margin:.3em 0; font-size:.88rem}
+.panel-detaillink{
+  display:inline-flex; align-items:center; gap:6px; margin-top:6px;
+  font-size:.86rem; font-weight:600; color:var(--accent-ink);
+  background:var(--accent-bg); padding:6px 14px; border-radius:8px;
+}
+.panel-detaillink:hover{background:var(--accent-bg2); text-decoration:none}
+.panel-detaillink.none{background:var(--bg-sunken); color:var(--ink-faint); font-weight:500; cursor:default}
+
+/* honest note callout */
+.note{
+  background:var(--warn-bg); border:1px solid var(--warn-line);
+  border-radius:var(--radius); padding:18px 22px; margin:18px 0;
+}
+.note .eyebrow{color:var(--warn-ink)}
+.note p{margin:.4em 0; color:#5f4d22}
+
+/* responsive */
+.scaler{overflow-x:auto; -webkit-overflow-scrolling:touch}
+@media (max-width:680px){
+  .hero h1{font-size:1.6rem}
+  .topnav .wrap{height:auto; padding-top:8px; padding-bottom:8px}
+  .panel{width:100vw}
+  .concepts{padding:20px 18px 22px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ PERSISTENT NAV (shared) ============ -->
+<nav class="topnav">
+  <div class="wrap">
+    <span class="brand">Hermes 架構解說<small>v0.17.0 · 實體圖</small></span>
+    <div class="navlinks">
+      
+      <a href="index.html" class="active">總覽</a>
+      <a href="gateway.html">Gateway</a>
+      <a href="agent-learning.html">Agent 與學習</a>
+      <a href="tools-mcp.html">Tools 與 MCP</a>
+      <a href="providers.html">Providers</a>
+      <a href="state.html">State</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">開源個人 AI agent 執行環境 · 實體與關係</p>
+    <h1>Hermes：把系統看成一堆「實體」，而不是一條流水線</h1>
+    <p class="sub">
+      Hermes 是一個可以自己跑的個人 AI agent 執行環境：你在某個聊天平台（LINE、Telegram、Discord…）傳一句話，它在背後找出對應的 agent、呼叫大型語言模型、必要時動用工具，再把回覆送回平台。它還會把每次對話存下來，並從互動中慢慢長出記憶和技能。
+    </p>
+    <span class="stamp">
+      <span class="dot"></span>
+      <span>快照 <b>Hermes v0.17.0</b> · commit <b>2a10b83</b> · <b>2026-06-22</b></span>
+    </span>
+    <p class="snapshot-line">
+      Hermes 發版很快，本解說只對應上面這個 commit。日後行號與結構可能位移，引用的
+      <span class="mono">file:line</span> 以此快照為準，點開會連到 GitHub 上同一個 commit 的原始碼。請以類別、函式名稱為主，行號為輔。
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ CONCEPTS FIRST (v3 fix #1) ============ -->
+  <section class="section" id="concepts">
+    <p class="eyebrow">先懂這些概念 · 共通語彙</p>
+    <h2 style="margin-bottom:8px">看圖之前，先把這些詞講清楚</h2>
+    <div class="concepts">
+      <p class="intro">
+        下面這張圖會用到一批 Hermes 自己的詞。先在這裡把每個詞定義一次（中文名後面括號是原始碼裡用的英文），之後不再重複解釋。每個定義都對著原始碼確認過，點 <span class="mono">file:line</span> 可以跳到 GitHub 看出處。
+      </p>
+      <div class="concept-groups" id="conceptGroups"><!-- injected by JS --></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ TABS (full-bleed: the whiteboard spans the viewport width,
+     text stays in the readable column) ============ -->
+<section class="section fullbleed" id="views">
+  <div class="bleed-inner">
+    <div class="wrap">
+      <h2 style="margin-bottom:6px">兩種視角看同一個系統</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-view="v1" role="tab" aria-selected="true">
+          視角一 · 實體圖<span class="tnote">class diagram</span>
+        </button>
+        <button class="tab" data-view="v2" role="tab" aria-selected="false">
+          視角二 · 一則訊息的流程<span class="tnote">sequence diagram</span>
+        </button>
+        <span class="clickhint">點任一張卡片，右側看完整說明</span>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 1 ===================== -->
+    <div class="view active" id="view-v1" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">這些方塊是系統裡真實存在的「東西」，空間上分成六群。每個方塊只標名字和一句目的，<b>點方塊</b>就從右側看完整說明（角色、關鍵方法、關係、限制）。<b>把游標移到方塊上</b>，只會點亮它牽到的關係線，其餘變淡。畫板比視窗大時，可在框內捲動。</p>
+
+      <div class="diagram-toolbar">
+        <div class="legend">
+          <span class="li"><span class="swatch sw-owns"></span>持有（owns）</span>
+          <span class="li"><span class="swatch sw-calls"></span>呼叫（calls）</span>
+          <span class="li"><span class="swatch sw-rw"></span>讀寫（reads-writes）</span>
+          <span class="li"><span class="swatch sw-isa"></span>繼承（is-a）</span>
+          <span class="li"><span class="dotc" style="background:var(--c-platform)"></span>平台層</span>
+          <span class="li"><span class="dotc" style="background:var(--c-core)"></span>agent 核心</span>
+          <span class="li"><span class="dotc" style="background:var(--c-tools)"></span>工具與 MCP</span>
+          <span class="li"><span class="dotc" style="background:var(--c-provider)"></span>供應商</span>
+          <span class="li"><span class="dotc" style="background:var(--c-persist)"></span>持久層</span>
+          <span class="li"><span class="dotc" style="background:var(--c-learn)"></span>學習子系統</span>
+        </div>
+      </div>
+      </div><!-- /.wrap (view-v1 text column) -->
+
+      <div class="diagram-shell scaler">
+        <div class="canvas">
+          <div class="canvas-inner" id="canvas1">
+            <svg class="svg-edges" viewBox="0 0 1720 1000" preserveAspectRatio="none" id="edges1">
+              <defs>
+                <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#d2d8e2" stroke-width="1.4"/>
+                </marker>
+                <marker id="arrow-hot" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6" fill="none" stroke="#4554d6" stroke-width="1.6"/>
+                </marker>
+                <marker id="tri-isa" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#d2d8e2" stroke-width="1.2"/>
+                </marker>
+                <marker id="tri-isa-hot" markerWidth="13" markerHeight="13" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1,1 L11,5 L1,9 Z" fill="var(--bg-card)" stroke="#4554d6" stroke-width="1.4"/>
+                </marker>
+              </defs>
+            </svg>
+
+            <!-- cluster labels -->
+            <div class="cluster-label" style="left:40px; top:24px">platform 層</div>
+            <div class="cluster-label" style="left:470px; top:24px">agent 核心</div>
+            <div class="cluster-label" style="left:1340px; top:24px">provider</div>
+            <div class="cluster-label" style="left:900px; top:424px">tools / MCP</div>
+            <div class="cluster-label" style="left:40px; top:782px">持久層 + 學習子系統</div>
+
+            <!-- ENTITY BOXES injected by JS (collapsed by default) -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== VIEW 2 ===================== -->
+    <div class="view" id="view-v2" role="tabpanel">
+      <div class="wrap">
+      <p class="viewhint">同一批實體當生命線（lifeline），從左到右大致照訊息流向排。箭頭是時間軸上的呼叫，由上往下發生。點上方的方塊、或點任一個帶編號的訊息步驟，右側開細節。虛線回程是結果或回覆往回送。</p>
+
+      <div class="legend" style="margin-bottom:14px">
+        <span class="li"><span class="swatch" style="border-top:2px solid #7d8aa0"></span>呼叫（往前）</span>
+        <span class="li"><span class="swatch sw-rw" style="border-color:#b0407a"></span>回傳 / 回覆（往回）</span>
+        <span class="li"><span class="swatch" style="border-top:2px solid #6a8f1f"></span>自身內部動作</span>
+      </div>
+      </div><!-- /.wrap (view-v2 text column) -->
+
+      <div class="seq-shell scaler">
+        <div class="seq-inner" id="seq1">
+          <svg class="seq-svg" viewBox="0 0 1140 720" id="seqsvg">
+            <defs>
+              <marker id="seqarrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#7d8aa0" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-ret" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#b0407a" stroke-width="1.3"/>
+              </marker>
+              <marker id="seqarrow-self" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L7,3 L0,6" fill="none" stroke="#6a8f1f" stroke-width="1.3"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div><!-- /.bleed-inner -->
+</section>
+
+<main class="wrap">
+
+  <!-- ============ HONEST NOTE ============ -->
+  <section class="section" id="caveat">
+    <div class="note">
+      <p class="eyebrow">讀這份要知道的事</p>
+      <p>幾個核心檔案非常長：<a class="ref" data-ref="gateway/run.py:2475"><b>gateway/run.py</b></a> 約 17.8k 行、
+        <a class="ref" data-ref="run_agent.py:333"><b>run_agent.py</b></a> 約 5.6k 行（一輪主體另抽到
+        <a class="ref" data-ref="agent/conversation_loop.py:495"><b>agent/conversation_loop.py</b></a> 約 4.6k 行）、
+        <a class="ref" data-ref="hermes_state.py:667"><b>hermes_state.py</b></a> 約 5.1k 行。圖上的方塊刻意只標主線錨點，把邊角情況的雜訊留在外面。</p>
+      <p>有兩個地方圖上做了誠實簡化：(1) <code>tool_executor</code> 不是一個類別，是模組層的兩個函式，透過 <code>AIAgent</code> 上的轉手方法被呼叫；
+        (2) <code>AIAgent.run_conversation</code> 與這兩個 executor 函式都只是「轉手」，真正的對話迴圈邏輯在 <code>conversation_loop.py</code>。
+        圖上把它們畫成獨立實體是為了關係清楚，原始碼裡是轉手方法加模組函式的形態。</p>
+      <p>所有 <span class="mono">file:line</span> 對應 commit <b>2a10b83</b>（2026-06-22）。發版很快，日後行號很可能位移。</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ DETAIL PANEL ============ -->
+<div class="panel-scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-hidden="true">
+  <div class="panel-head">
+    <div class="pmark" id="pmark"></div>
+    <div class="ph-t">
+      <div class="ph-name" id="pname">·</div>
+      <div class="ph-stereo" id="pstereo"></div>
+    </div>
+    <button class="panel-close" id="pclose" aria-label="關閉">×</button>
+  </div>
+  <div class="panel-body" id="pbody"></div>
+</aside>
+
+<!-- ============ FOOTER (shared) ============ -->
+<footer>
+  <div class="wrap">
+    <span>整理：陳展佑 Yo</span>
+    <span class="mono">Hermes v0.17.0 · commit 2a10b83 · 2026-06-22</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   REPO LINK HELPER (v3 fix #3)
+   ONE helper. Every file:line in the page goes through it.
+   ============================================================ */
+var REPO_PREFIX='https://github.com/NousResearch/hermes-agent/blob/2a10b8384aa2ef0418063ca0829e491c5916fba4/';
+/* split on LAST ':' into file + line; build <prefix><file>#L<line> */
+function refURL(ref){
+  ref=String(ref).trim();
+  var i=ref.lastIndexOf(':');
+  var file=ref, line='';
+  if(i>0 && /^\d+$/.test(ref.slice(i+1))){ file=ref.slice(0,i); line=ref.slice(i+1); }
+  return REPO_PREFIX+file+(line?('#L'+line):'');
+}
+/* render a file:line ref as a clickable repo-linked chip */
+function refChip(ref){
+  if(!ref || ref==='—') return '';
+  return '<a class="ref" href="'+refURL(ref)+'" target="_blank" rel="noopener"><b>'+ref+'</b></a>';
+}
+/* hydrate any <a class="ref" data-ref="..."> placeholders in static HTML */
+function hydrateRefs(root){
+  (root||document).querySelectorAll('a.ref[data-ref]').forEach(function(a){
+    a.href=refURL(a.getAttribute('data-ref'));
+    a.target='_blank'; a.rel='noopener';
+  });
+}
+
+/* ============================================================
+   CONCEPTS DATA (v3 fix #1) — ubiquitous language
+   each term: {zh, en, def, ref?}  — ref rendered via helper
+   ============================================================ */
+var CONCEPT_GROUPS=[
+  {key:'g-conv', title:'對話與訊息', items:[
+    {zh:'會話', en:'Session', def:'一段有 id、有歷史的持續對話。同一個使用者在同一個地方講的話會被歸到同一個 session，agent 記得這串脈絡。'},
+    {zh:'一輪', en:'Turn', def:'一次「使用者輸入 → agent 完整回覆」的循環。中間可能多次呼叫模型或工具，全部算同一輪；一輪結束才把記憶寫回。'},
+    {zh:'平台轉接', en:'Platform adapter', def:'把某個聊天平台的格式跟 Hermes 內部格式互轉的元件。每個平台一個，是系統對外的接口。', ref:'gateway/platforms/base.py:2082'},
+    {zh:'正規化', en:'Normalize', def:'把各平台格式不一的進來訊息，轉成統一的內部 MessageEvent，後面所有處理都只認這個格式。', ref:'gateway/platforms/base.py:1600'},
+    {zh:'送出合約', en:'Send contract', def:'回覆怎麼送回平台的約定：能編輯既有訊息、還是只能發新泡泡。LINE 不能編輯、只發新泡泡，所以它的 REQUIRES_EDIT_FINALIZE 設成 False。', ref:'plugins/platforms/line/adapter.py:641'},
+  ]},
+  {key:'g-reason', title:'推理與能力', items:[
+    {zh:'對話迴圈', en:'Agent loop', def:'呼叫模型，看模型要不要用工具，用完把結果接回去再呼叫模型，反覆到模型不再要工具為止。一輪的核心就是這個迴圈。', ref:'agent/conversation_loop.py:495'},
+    {zh:'工具', en:'Tool', def:'agent 可以呼叫的一個動作，例如讀寫檔案、執行程式、發訊息。模型決定要用哪個、帶什麼參數。'},
+    {zh:'MCP', en:'MCP', def:'連接「工具伺服器」的標準協定。透過它，agent 可以動態接上外部服務、把對方的工具拿來用，不必把每個工具寫死在核心裡。', ref:'tools/mcp_tool.py:1404'},
+    {zh:'供應商', en:'Provider', def:'背後實際在跑的模型服務（例如 Anthropic、Gemini、OpenAI）。Hermes 用一套統一介面接好幾家，把各家差異封在各自的設定裡。', ref:'providers/base.py:39'},
+  ]},
+  {key:'g-mem', title:'記憶與學習', items:[
+    {zh:'記憶預取', en:'prefetch', def:'一輪開始前，先依這次的問題撈出相關的舊記憶，塞進這一輪的脈絡，讓 agent 講話時帶著過去。', ref:'agent/memory_manager.py:453'},
+    {zh:'記憶回寫', en:'sync', def:'一輪結束後，把這次該記的東西寫回記憶後端，供未來的 prefetch 撈回。實際在背景執行緒上跑，不卡住回覆。', ref:'agent/memory_manager.py:516'},
+    {zh:'技能', en:'Skill', def:'agent 可以自己建立、之後重用的一個能力包。累積多了之後需要有人整理。', ref:'tools/skill_usage.py:415'},
+    {zh:'策展', en:'Curator', def:'背景模型，趁 agent 閒置時整理它自己長出來的技能：釘選常用的、合併重複的、封存沒在用的。只封存，永不刪除，封存可還原。', ref:'agent/curator.py:1898'},
+  ]},
+  {key:'g-persist', title:'持久化', items:[
+    {zh:'持久層', en:'SessionDB', def:'把會話和訊息存進 SQLite 的那一層。對話過完就落地，重啟也還在。', ref:'hermes_state.py:667'},
+    {zh:'全文檢索', en:'FTS', def:'對歷史訊息做全文搜尋。另外建一張 trigram 表處理中日韓文（沒有空格分詞），所以中文也搜得到。', ref:'hermes_state.py:641'},
+  ]},
+];
+var GROUP_DOTCLASS={'g-conv':'g-conv','g-reason':'g-reason','g-mem':'g-mem','g-persist':'g-persist'};
+
+function buildConcepts(){
+  var host=document.getElementById('conceptGroups');
+  var html='';
+  CONCEPT_GROUPS.forEach(function(g){
+    html+='<div class="cgroup '+g.key+'"><h3><span class="gdot"></span>'+g.title+'</h3><ul class="glist">';
+    g.items.forEach(function(it){
+      html+='<li><div class="gterm">'+it.zh+'<span class="en">'+it.en+'</span></div>'+
+            '<div class="gdef">'+it.def+(it.ref?(' '+refChip(it.ref)):'')+'</div></li>';
+    });
+    html+='</ul></div>';
+  });
+  host.innerHTML=html;
+}
+
+/* ============================================================
+   ENTITY DATA — each entity's full "一套說明"
+   purpose = collapsed one-liner; methods carry file:line refs
+   ============================================================ */
+var CLUSTER_COLOR = {
+  platform:'#2f7fd1', core:'#6048c4', tools:'#1f9e88',
+  provider:'#c4682f', persist:'#b0407a', learn:'#6a8f1f'
+};
+
+var ENTITIES = {
+  'base-adapter':{
+    name:'BasePlatformAdapter', cluster:'platform', stereo:'abstract base · gateway/platforms/base.py:2082',
+    purpose:'平台轉接基底',
+    methods:[
+      ['class BasePlatformAdapter(ABC)','gateway/platforms/base.py:2082'],
+      ['MessageEvent（統一的內部訊息格式）','gateway/platforms/base.py:1600'],
+      ['REQUIRES_EDIT_FINALIZE（送出合約旗標）','gateway/platforms/base.py:2643'],
+    ],
+    role:'所有平台轉接的抽象基底，定義「進來怎麼正規化、出去怎麼送」的合約。',
+    summary:'每個前端平台（LINE、Telegram、Discord、Slack、Matrix…）都要有一個轉接器，把該平台特有的訊息格式正規化成 Hermes 內部統一的 MessageEvent，反向也負責把 agent 的回覆轉回平台訊息。這個抽象基底就是那份合約。其中 REQUIRES_EDIT_FINALIZE 這個旗標屬於「送出合約」：標記這個平台能不能編輯既有訊息，影響回覆怎麼路由。',
+    rels:[
+      ['isa','被繼承','LineAdapter、APIServerAdapter 等具體轉接器都 <b>繼承</b>它。'],
+      ['calls','被呼叫','GatewayRunner 透過它把回覆送回對應平台。']
+    ],
+    gotcha:'抽象層本身不含平台邏輯；每個平台的細節都在各自子類別裡，所以「轉接器在哪」要看具體平台資料夾，不是這個檔。',
+    page:'gateway.html'
+  },
+  'line-adapter':{
+    name:'LineAdapter（代表各平台）', cluster:'platform', stereo:'concrete adapter · plugins/platforms/line/adapter.py:638',
+    purpose:'LINE 平台轉接',
+    methods:[
+      ['class LineAdapter(BasePlatformAdapter)','plugins/platforms/line/adapter.py:638'],
+      ['REQUIRES_EDIT_FINALIZE = False（只發新泡泡，不編輯）','plugins/platforms/line/adapter.py:641'],
+      ['同層兄弟：telegram / discord / slack / matrix','plugins/platforms'],
+    ],
+    role:'具體平台轉接之一（LINE）。telegram、discord、slack、matrix 各有一個同層的兄弟。',
+    summary:'這是「平台多型」的具體一支：收 LINE 的 webhook 事件，正規化成 MessageEvent 交給 gateway；agent 算完後再把回覆轉回 LINE 的訊息格式送出。把它選為代表，是因為各平台轉接器結構類似，看懂一個等於看懂一類。它的送出合約很單純：LINE 沒有編輯訊息的能力，永遠送新泡泡，所以 REQUIRES_EDIT_FINALIZE 保持 False（檔內 :641 註解說明）。',
+    rels:[
+      ['isa','繼承','<b>繼承</b> BasePlatformAdapter（is-a）。'],
+      ['calls','呼叫','把正規化後的 MessageEvent 交給 <b>GatewayRunner</b> 處理。']
+    ],
+    gotcha:'各平台對訊息長度、格式、附件、能不能編輯的限制不同，這些差異散在各自轉接器與 gateway 的回覆過濾器裡，不是集中一處。',
+    page:'gateway.html'
+  },
+  'api-server':{
+    name:'APIServerAdapter', cluster:'platform', stereo:'aiohttp adapter · gateway/platforms/api_server.py:744',
+    purpose:'HTTP API 入口',
+    methods:[
+      ['class APIServerAdapter(BasePlatformAdapter)','gateway/platforms/api_server.py:744'],
+      ['web.Application(middlewares=…)','gateway/platforms/api_server.py:4383'],
+      ['路由 /v1/chat/completions · /v1/responses','—'],
+    ],
+    role:'特殊轉接器：不是聊天平台，而是跑一個 aiohttp 網頁伺服器，收 OpenAI 格式的 HTTP 請求。',
+    summary:'它讓 Hermes 對外長得像一個 OpenAI 相容的 API。內部跑 aiohttp 網頁伺服器，路由 /v1/chat/completions、/v1/responses、/v1/runs、/api/sessions 等端點，把 HTTP 請求接成跟其他平台一樣的內部流程，再以 JSON 或 SSE 串流回傳。要做程式化整合（不是真人聊天）就走這條。',
+    rels:[
+      ['isa','繼承','<b>繼承</b> BasePlatformAdapter，跟聊天轉接器同一層。'],
+      ['calls','呼叫','同樣把請求交給 <b>GatewayRunner</b> 跑一輪。']
+    ],
+    gotcha:'aiohttp 是選用相依套件：沒裝時這個轉接器會警告並無法啟動網頁伺服器。它也是唯一帶 HTTP 請求大小上限（client_max_size）的入口。它沒有持久外送通道，所以一輪結束後無法非同步推背景結果回來。',
+    page:'gateway.html'
+  },
+  'gateway':{
+    name:'GatewayRunner', cluster:'core', stereo:'orchestrator · gateway/run.py:2475',
+    purpose:'驅動 agent、管 session',
+    methods:[
+      ['class GatewayRunner（多重 Mixin）','gateway/run.py:2475'],
+      ['_handle_message(event)','gateway/run.py:7265'],
+      ['self._agent_cache（每 session 一個 AIAgent）','gateway/run.py:2621'],
+      ['self._session_db = SessionDB()','gateway/run.py:2698'],
+    ],
+    role:'整個執行環境的協調中樞。收訊息、管 session、找或建 agent、備好歷史、驅動一輪、把回覆送回平台。',
+    summary:'一則訊息的旅程幾乎都由它指揮。它解析 MessageEvent，用 session key 在 _agent_cache（一個 OrderedDict）裡找出或建立對應的 AIAgent（每個 session 快取一個實例，保住提示快取），備好對話歷史，呼叫 agent 跑這一輪，結果經回覆過濾與遞送送回原平台。它同時持有 SessionDB，負責對話落地與 session 管理。檔案約 17.8k 行，但脊椎就是 _handle_message 這條。',
+    rels:[
+      ['owns','持有','<b>持有</b> _agent_cache 裡的 AIAgent 實例，以及一個 SessionDB。'],
+      ['calls','呼叫','<b>呼叫</b> AIAgent.run_conversation 跑一輪；收平台轉接器來的 MessageEvent。'],
+      ['rw','讀寫','透過 SessionDB <b>讀寫</b> 對話與 session 狀態。']
+    ],
+    gotcha:'_agent_cache 有上限，舊 session 的 agent 會被淘汰，下次該 session 來訊得重建 agent、提示快取也跟著失效。這是「為什麼很久沒講話的對話第一句比較慢」的根因之一。',
+    page:'gateway.html'
+  },
+  'aiagent':{
+    name:'AIAgent', cluster:'core', stereo:'agent instance · run_agent.py:333',
+    purpose:'推理迴圈本體',
+    methods:[
+      ['class AIAgent','run_agent.py:333'],
+      ['run_conversation()（轉手 → conversation_loop）','run_agent.py:5302'],
+      ['_create_openai_client(...)','run_agent.py:3598'],
+    ],
+    role:'一個 session 一個實例（被 gateway 快取）。握著模型 client、工具、記憶，是「這個對話」的化身。',
+    summary:'AIAgent 是對話的有狀態實例：它握著 OpenAI 相容的 client、這個對話可用的工具集、以及 MemoryManager。對外的入口 run_conversation 其實是個轉手方法，真正的迴圈邏輯轉到 conversation_loop.py。它也負責建立與重建模型 client（含切換備援）。把它想成「gateway 持有的、每個對話一份的 agent 大腦」。',
+    rels:[
+      ['owns','持有','<b>持有</b> 一個 OpenAI 相容 client、工具、以及 MemoryManager。'],
+      ['isa','被持有','被 <b>GatewayRunner</b> 的 _agent_cache 持有（每 session 一個）。'],
+      ['calls','呼叫','run_conversation <b>轉手</b>給 conversation_loop 跑真正的迴圈。']
+    ],
+    gotcha:'run_conversation 在 AIAgent 上只是轉手（檔內註解寫 Forwarder, see agent.conversation_loop）。在 run_agent.py 裡找不到迴圈本體是正常的，邏輯被刻意抽到別檔以縮短這個 5.6k 行的檔。',
+    page:'agent-learning.html'
+  },
+  'conv-loop':{
+    name:'conversation_loop', cluster:'core', stereo:'turn body · agent/conversation_loop.py:495',
+    purpose:'一輪的實際迴圈',
+    methods:[
+      ['run_conversation(...)（真正的對話迴圈）','agent/conversation_loop.py:495'],
+      ['if assistant_message.tool_calls 分支','agent/conversation_loop.py:3812'],
+      ['切換備援、修補壞掉的工具參數、脈絡壓縮','—'],
+    ],
+    role:'一輪的真正主體：打模型 → 看有沒有工具呼叫 → 跑工具 → 接回去 → 再問模型，反覆到收斂。',
+    summary:'這是「一輪怎麼跑」的心臟。run_conversation(:495) 是真正的對話迴圈：呼叫供應商拿模型回覆，如果回覆帶工具呼叫（分支在 :3812），就交給 tool_executor 跑、把結果接回訊息串、再問模型；直到模型不再要求工具才產出最終回覆。沿路還處理重試與供應商切換、壞掉的工具參數修補、以及脈絡過長時的壓縮。約 4.6k 行。',
+    rels:[
+      ['isa','被轉手','AIAgent.run_conversation <b>轉手</b>進這裡（它跑在 agent 實例的脈絡上）。'],
+      ['calls','呼叫','一輪內 <b>呼叫</b> tool_executor 派工具，並透過供應商 client 打模型。']
+    ],
+    gotcha:'它跟 AIAgent 不是兩個獨立物件。這是模組層函式，吃 agent 當第一個參數來操作 agent 的狀態。圖上把它畫成獨立方塊是為了讓「迴圈邏輯在哪」一目了然。',
+    page:'agent-learning.html'
+  },
+  'tool-exec':{
+    name:'tool_executor（模組函式）', cluster:'tools', stereo:'module functions · agent/tool_executor.py',
+    purpose:'派發工具呼叫（模組函式）',
+    methods:[
+      ['execute_tool_calls_concurrent(agent, …)','agent/tool_executor.py:260'],
+      ['execute_tool_calls_sequential(agent, …)','agent/tool_executor.py:792'],
+      ['→ model_tools.handle_function_call(...)','model_tools.py:901'],
+    ],
+    role:'派發模型要求的工具呼叫（並行或序列兩條路徑），再實際呼叫工具實作把結果接回去。',
+    summary:'當模型回傳一批工具呼叫，迴圈把它們交給這層派發。可並行（execute_tool_calls_concurrent :260）或序列（execute_tool_calls_sequential :792），最終都走到 model_tools.handle_function_call(:901) 真正執行某個工具。內建工具有 90 多個（檔案操作、執行程式、瀏覽器、看板、發訊息…），按工具集分組；外部能力則經 MCP。注意它不是類別，是模組函式，由 AIAgent 上的轉手方法呼叫。',
+    rels:[
+      ['isa','被呼叫','由 <b>conversation_loop</b> 的工具呼叫分支呼叫（經 AIAgent 轉手）。'],
+      ['calls','呼叫','對 MCP 工具 → 轉去 <b>MCPServerTask</b>；對內建工具 → 本地實作。']
+    ],
+    gotcha:'並行路徑只對「並行安全」的工具開；有副作用、不安全並行的工具會落到序列路徑。所以同一批工具呼叫不保證全部同時跑。',
+    page:'tools-mcp.html'
+  },
+  'mcp':{
+    name:'MCPServerTask', cluster:'tools', stereo:'mcp client task · tools/mcp_tool.py:1404',
+    purpose:'一條 MCP 連線',
+    methods:[
+      ['class MCPServerTask','tools/mcp_tool.py:1404'],
+      ['discover_mcp_tools()','tools/mcp_tool.py:4134'],
+      ['server.session.call_tool(tool_name, …)','tools/mcp_tool.py:3168'],
+    ],
+    role:'連一台外部 MCP 伺服器的長駐 task。把它的工具動態轉成 Hermes 的工具格式，並代轉工具呼叫。',
+    summary:'這是 Hermes 連外部 MCP 伺服器的 client。每台設定好的伺服器對應一個長駐 task：建立連線（stdio、HTTP-StreamableHTTP、SSE 三種傳輸），discover_mcp_tools(:4134) 把該伺服器的工具轉成 Hermes 的工具格式一起餵給模型；當模型呼叫某個 MCP 工具時，透過 session.call_tool(:3168) 代轉過去、把結果接回來。錯誤訊息會做憑證清除才回給模型。',
+    rels:[
+      ['isa','被呼叫','由 <b>tool_executor</b> 在工具是 MCP 工具時呼叫。'],
+      ['calls','呼叫','對外 <b>呼叫</b> 真正的 MCP 伺服器行程或端點。']
+    ],
+    gotcha:'自動重連是有界的：指數退避，最多 5 次重試。連線真的掛了不會無限重連，超過上限後該伺服器的工具就暫時不可用，要等下一次觸發重連路徑。',
+    page:'tools-mcp.html'
+  },
+  'provider':{
+    name:'ProviderProfile + registry', cluster:'provider', stereo:'provider profile · providers/base.py:39',
+    purpose:'一個模型供應商',
+    methods:[
+      ['class ProviderProfile','providers/base.py:39'],
+      ['get_provider_profile(name)','providers/__init__.py:65'],
+      ['28 個 plugin 目錄','plugins/model-providers'],
+    ],
+    role:'封裝每家模型供應商的差異，用一套 OpenAI 相容 client 接 28 家以上。',
+    summary:'實際打模型的抽象在這。Hermes 用一個 OpenAI 相容 client 走遍各家，把每家的差異（base URL、headers、temperature 規則、max_tokens、訊息預處理…）封進各自的 ProviderProfile，由 registry 懶載入（get_provider_profile :65）。隨庫附了 28 個供應商 plugin（anthropic、gemini、openai-codex、deepseek、kimi、nous、openrouter、xai…），使用者也能自己加。',
+    rels:[
+      ['isa','被使用','AIAgent 依 profile 設定建出 OpenAI 相容 client。'],
+      ['calls','被呼叫','<b>conversation_loop</b> 每輪透過這個 client <b>呼叫</b> 真正的模型端點。']
+    ],
+    gotcha:'「OpenAI 相容」是介面層的統一，不代表各家行為一致：temperature、max_tokens、訊息預處理規則都被 profile 各自覆寫，某些家的怪癖也在 profile 裡修補。同一段對話換供應商，行為可能微妙不同。',
+    page:'providers.html'
+  },
+  'sessiondb':{
+    name:'SessionDB', cluster:'persist', stereo:'sqlite persistence · hermes_state.py:667',
+    purpose:'會話／訊息持久層',
+    methods:[
+      ['class SessionDB','hermes_state.py:667'],
+      ['messages_fts（fts5 全文檢索）','hermes_state.py:612'],
+      ['messages_fts_trigram（CJK trigram）','hermes_state.py:641'],
+    ],
+    role:'SQLite 持久層。對話落地，帶 FTS5 全文檢索（含給中日韓用的 trigram 表）。',
+    summary:'這是對話與 session 狀態的家。每輪結束時 gateway 透過它把訊息寫進 SQLite。它建了兩張 FTS5 虛擬表：messages_fts(:612) 是一般全文檢索，messages_fts_trigram(:641) 用 trigram 切詞器做 3-byte 重疊切分，這張是為了中日韓（沒有空格分詞）能被檢索到。還管自動修剪、整理、交接、壓縮血緣等。約 5.1k 行。',
+    rels:[
+      ['isa','被持有','被 <b>GatewayRunner</b> 持有（self._session_db）。'],
+      ['rw','被讀寫','gateway <b>讀寫</b> 它做對話落地、session 查詢、全文檢索。']
+    ],
+    gotcha:'兩套全文檢索（一般加 trigram）並存意味著每筆訊息要維護兩份索引。trigram 表能查中日韓但體積與寫入成本較高；這是「能搜中文」換來的代價。',
+    page:'state.html'
+  },
+  'memory':{
+    name:'MemoryManager', cluster:'learn', stereo:'cross-session memory · agent/memory_manager.py:314',
+    purpose:'記憶預取／回寫',
+    methods:[
+      ['class MemoryManager','agent/memory_manager.py:314'],
+      ['prefetch_all(query, …)（一輪前）','agent/memory_manager.py:453'],
+      ['sync_all(...)（一輪後，背景執行緒）','agent/memory_manager.py:516'],
+    ],
+    role:'跨 session 記憶。一輪前 prefetch 相關記憶注入脈絡、一輪後把這次對話 sync 成可被未來檢索的記憶。',
+    summary:'Hermes 把「從互動中學習」做進核心，MemoryManager 是其中的記憶軸。一輪開始前 prefetch_all(:453) 依當前問題撈相關的跨 session 記憶塞進脈絡；一輪結束後 sync_all(:516) 把這次交換沉澱回記憶後端。被 AIAgent 持有（self._memory_manager），在一輪的邊界被觸發，所以它對使用者是隱形的背景機制。',
+    rels:[
+      ['isa','被持有','被 <b>AIAgent</b> 持有（self._memory_manager）。'],
+      ['calls','呼叫','prefetch 與 sync 操作背後的記憶後端（嵌入與檢索）。']
+    ],
+    gotcha:'prefetch 與 sync 綁在一輪的邊界，不是即時的；sync 還跑在背景執行緒（避免慢速後端卡住回覆）。這一輪講的事，要這一輪結束 sync 後、下一輪 prefetch 才可能被撈回。同一輪內提到的東西不會在同一輪馬上被「記住並回查」。',
+    page:'agent-learning.html'
+  },
+  'curator':{
+    name:'Curator（+ skills）', cluster:'learn', stereo:'background curator · agent/curator.py:1898',
+    purpose:'背景整理 skills',
+    methods:[
+      ['maybe_run_curator(...)（閒置時判斷觸發）','agent/curator.py:1898'],
+      ['run_curator_review(...)（實際 review）','agent/curator.py:1428'],
+      ['is_agent_created(name)（範圍判定）','tools/skill_usage.py:415'],
+    ],
+    role:'背景模型。agent 閒置時觸發，整理 agent 自己建立的技能（釘選、合併、修補、封存）。',
+    summary:'學習軸的另一半。agent 可以透過技能工具自己建新技能；累積久了需要有人整理，這就是 curator。它是輔助模型 task：maybe_run_curator(:1898) 在 agent 閒置（不是排程 daemon）時判斷要不要跑，run_curator_review(:1428) 實際做 review：釘選常用的、合併重複的、修補、封存久沒用的。關鍵約束：只動 agent 自建的技能（is_agent_created :415 判定），而且只封存不刪、封存可還原。',
+    rels:[
+      ['rw','讀寫','<b>讀寫</b> agent 自建的技能（釘選、合併、修補、封存）。'],
+      ['isa','被觸發','在 <b>AIAgent</b> 閒置時被觸發，不是常駐排程。']
+    ],
+    gotcha:'兩個常見誤解要澄清：(1) curator 不是排程 daemon，是「閒置觸發」，沒有對話空檔就不會跑；(2) 它只碰 agent 自建的技能，內建或安裝的技能不動，而且永遠只封存不真刪（檔頭明寫 Never auto-deletes, only archives）。',
+    page:'agent-learning.html'
+  }
+};
+
+/* ============================================================
+   VIEW 1 — entity layout (design-space coords) + edges
+   layout clustered to minimise edge crossings:
+   platform col (left) → core col → tools col (right-mid) → provider (top-right)
+   persist + learn along the bottom band.
+   ============================================================ */
+var LAYOUT={
+  'base-adapter':{x:40,   y:70},
+  'line-adapter':{x:40,   y:300},
+  'api-server':  {x:40,   y:520},
+  'gateway':     {x:470,  y:70},
+  'aiagent':     {x:470,  y:320},
+  'conv-loop':   {x:470,  y:560},
+  'tool-exec':   {x:900,  y:480},
+  'mcp':         {x:900,  y:720},
+  'provider':    {x:1340, y:70},
+  'sessiondb':   {x:40,   y:820},
+  'memory':      {x:430,  y:820},
+  'curator':     {x:820,  y:820}
+};
+var BOX_W=214;
+
+/* Edges: [from, to, kind, label]
+   from/to are entity ids; ports auto-derived from box geometry. */
+var EDGES=[
+  ['line-adapter','base-adapter','isa','繼承'],
+  ['api-server','base-adapter','isa','繼承'],
+  ['line-adapter','gateway','calls','送 MessageEvent'],
+  ['api-server','gateway','calls','HTTP 請求'],
+  ['gateway','aiagent','owns','持有（快取）'],
+  ['gateway','sessiondb','rw','讀寫對話'],
+  ['aiagent','conv-loop','calls','轉手 run_conversation'],
+  ['aiagent','memory','owns','持有'],
+  ['aiagent','provider','isa','用 profile 建 client'],
+  ['conv-loop','tool-exec','calls','派工具'],
+  ['conv-loop','provider','calls','打模型（每輪）'],
+  ['tool-exec','mcp','calls','MCP 工具'],
+  ['curator','curator','rw','整理技能']
+];
+
+/* approximate collapsed box heights for port math (collapsed = head + role) */
+var BOX_H=92;
+
+function boxRect(id){
+  var L=LAYOUT[id];
+  var el=document.querySelector('.entity[data-entity="'+id+'"]');
+  var h=el?el.offsetHeight:BOX_H;
+  return {x:L.x, y:L.y, w:BOX_W, h:h, cx:L.x+BOX_W/2, cy:L.y+h/2};
+}
+/* pick connection ports on box edges facing each other */
+function ports(a,b){
+  var dx=b.cx-a.cx, dy=b.cy-a.cy;
+  function side(r,toX,toY){
+    // choose left/right/top/bottom midpoint nearest direction
+    if(Math.abs(toX-r.cx) > Math.abs(toY-r.cy)){
+      return toX>r.cx ? {x:r.x+r.w, y:r.cy} : {x:r.x, y:r.cy};
+    } else {
+      return toY>r.cy ? {x:r.cx, y:r.y+r.h} : {x:r.cx, y:r.y};
+    }
+  }
+  return [side(a,b.cx,b.cy), side(b,a.cx,a.cy)];
+}
+
+function buildEntities(){
+  var host=document.getElementById('canvas1');
+  Object.keys(ENTITIES).forEach(function(id){
+    var e=ENTITIES[id], L=LAYOUT[id];
+    var box=document.createElement('div');
+    box.className='entity '+e.cluster;
+    box.setAttribute('data-entity',id);
+    /* whole card opens the drawer (v4) — keyboard accessible too */
+    box.setAttribute('data-detail',id);
+    box.setAttribute('role','button');
+    box.setAttribute('tabindex','0');
+    box.style.left=L.x+'px'; box.style.top=L.y+'px';
+    box.innerHTML=
+      '<span class="etag"></span>'+
+      '<div class="ehead">'+
+        '<span class="ename">'+e.name.replace(/（.*?）/,'')+'</span>'+
+      '</div>'+
+      '<div class="erole">'+e.purpose+'</div>';
+    host.appendChild(box);
+  });
+}
+
+function buildEdges(){
+  var svg=document.getElementById('edges1');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  EDGES.forEach(function(e,i){
+    var from=e[0], to=e[1], kind=e[2], label=e[3];
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    var tx=document.createElementNS('http://www.w3.org/2000/svg','text');
+    var d, lx, ly;
+    if(from===to){
+      // self loop (curator) — small arc on the box top-right
+      var r=boxRect(from);
+      var sx=r.x+r.w-26, sy=r.y, ex=r.x+r.w-6, ey=r.y;
+      d='M '+sx+' '+sy+' C '+(sx)+' '+(sy-26)+' '+(ex)+' '+(ey-26)+' '+ex+' '+ey;
+      lx=(sx+ex)/2; ly=sy-30;
+    } else {
+      var a=boxRect(from), b=boxRect(to);
+      var p=ports(a,b);
+      var f=p[0], t=p[1];
+      var mx=(f.x+t.x)/2, my=(f.y+t.y)/2;
+      var dx=t.x-f.x, dy=t.y-f.y;
+      var len=Math.sqrt(dx*dx+dy*dy)||1;
+      var px=-dy/len, py=dx/len;
+      var bend=Math.min(40, len*0.12);
+      var cx=mx+px*bend, cy=my+py*bend;
+      d='M '+f.x+' '+f.y+' Q '+cx+' '+cy+' '+t.x+' '+t.y;
+      lx=0.25*f.x+0.5*cx+0.25*t.x; ly=0.25*f.y+0.5*cy+0.25*t.y;
+    }
+    path.setAttribute('d',d);
+    path.setAttribute('class','edge-path');
+    path.setAttribute('data-edge',i);
+    path.setAttribute('data-from',from); path.setAttribute('data-to',to); path.setAttribute('data-kind',kind);
+    path.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+    svg.appendChild(path);
+    // label (hidden until edge is hot)
+    var tw=label.length*7.2+8;
+    bg.setAttribute('x',lx-tw/2); bg.setAttribute('y',ly-9);
+    bg.setAttribute('width',tw); bg.setAttribute('height',16);
+    bg.setAttribute('rx',4); bg.setAttribute('class','edge-label-bg'); bg.setAttribute('data-elabel',i);
+    svg.appendChild(bg);
+    tx.setAttribute('x',lx); tx.setAttribute('y',ly+3);
+    tx.setAttribute('text-anchor','middle'); tx.setAttribute('class','edge-label'); tx.setAttribute('data-elabel',i);
+    tx.textContent=label;
+    svg.appendChild(tx);
+  });
+}
+
+/* focus+context: highlight one entity's edges, dim the rest (v3 fix #4) */
+function focusEntity(id){
+  var paths=document.querySelectorAll('.edge-path');
+  var labels=document.querySelectorAll('.edge-label,.edge-label-bg');
+  paths.forEach(function(p){
+    var on = p.getAttribute('data-from')===id || p.getAttribute('data-to')===id;
+    p.classList.toggle('hot',on);
+    p.classList.toggle('dim',!on);
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', on
+      ? (kind==='isa'?'url(#tri-isa-hot)':'url(#arrow-hot)')
+      : (kind==='isa'?'url(#tri-isa)':'url(#arrow)'));
+  });
+  EDGES.forEach(function(e,i){
+    var on = e[0]===id || e[1]===id;
+    document.querySelectorAll('[data-elabel="'+i+'"]').forEach(function(n){
+      n.classList.toggle('hot',on); n.classList.toggle('dim',!on);
+    });
+  });
+  document.querySelectorAll('.entity').forEach(function(el){
+    el.classList.toggle('lit', el.getAttribute('data-entity')===id);
+  });
+}
+function clearFocus(){
+  document.querySelectorAll('.edge-path').forEach(function(p){
+    p.classList.remove('hot','dim');
+    var kind=p.getAttribute('data-kind');
+    p.setAttribute('marker-end', kind==='isa'?'url(#tri-isa)':'url(#arrow)');
+  });
+  document.querySelectorAll('.edge-label,.edge-label-bg').forEach(function(n){n.classList.remove('hot','dim');});
+  document.querySelectorAll('.entity.lit').forEach(function(el){el.classList.remove('lit');});
+}
+
+/* ============================================================
+   VIEW 2 — sequence diagram layout
+   ============================================================ */
+var SEQ_ACTORS = [
+  {id:'line-adapter', label:'PlatformAdapter', sub:'line / api_server', x:80},
+  {id:'gateway',      label:'GatewayRunner',   sub:'run.py',           x:262},
+  {id:'aiagent',      label:'AIAgent',         sub:'run_agent.py',     x:438},
+  {id:'conv-loop',    label:'conversation_loop',sub:'turn body',       x:618},
+  {id:'tool-exec',    label:'tool_executor',   sub:'+ MCPServerTask',  x:798},
+  {id:'provider',     label:'ProviderProfile', sub:'模型',             x:945},
+  {id:'sessiondb',    label:'SessionDB',       sub:'+ MemoryManager',  x:1078}
+];
+var SEQ_MSGS = [
+  ['line-adapter','gateway', '1','使用者訊息正規化成 MessageEvent',150,'fwd'],
+  ['gateway','sessiondb',    '2','prefetch 記憶 / 取歷史',192,'fwd'],
+  ['gateway','aiagent',      '3','找或建快取 agent · run_conversation',236,'fwd'],
+  ['aiagent','conv-loop',    '4','轉手進一輪主體',278,'fwd'],
+  ['conv-loop','provider',   '5','打模型',322,'fwd'],
+  ['provider','conv-loop',   '6','模型回覆（含工具呼叫）',364,'ret'],
+  ['conv-loop','tool-exec',  '7','派工具呼叫',406,'fwd'],
+  ['tool-exec','tool-exec',  '8','本地工具 / MCPServerTask.call_tool',446,'self'],
+  ['tool-exec','conv-loop',  '9','工具結果接回訊息串',488,'ret'],
+  ['conv-loop','provider',   '10','再問模型（迴圈，到無工具呼叫）',530,'fwd'],
+  ['conv-loop','aiagent',    '11','最終回覆',572,'ret'],
+  ['aiagent','sessiondb',    '12','sync 記憶 · 落地對話',614,'fwd'],
+  ['aiagent','gateway',      '13','回覆字串',650,'ret'],
+  ['gateway','line-adapter', '14','過濾 → 遞送 → 平台',688,'ret']
+];
+function actorX(id){for(var i=0;i<SEQ_ACTORS.length;i++){if(SEQ_ACTORS[i].id===id)return SEQ_ACTORS[i].x;}return 0;}
+
+function buildSequence(){
+  var holder=document.getElementById('seq1');
+  var svg=document.getElementById('seqsvg');
+  var defs=svg.querySelector('defs');
+  svg.innerHTML=''; svg.appendChild(defs);
+  Array.prototype.slice.call(holder.querySelectorAll('.seq-actorbox,.seq-step')).forEach(function(n){n.remove();});
+  var topY=78, botY=706;
+  SEQ_ACTORS.forEach(function(a){
+    var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',a.x); line.setAttribute('y1',topY);
+    line.setAttribute('x2',a.x); line.setAttribute('y2',botY);
+    line.setAttribute('class','seq-lifeline');
+    svg.appendChild(line);
+    var box=document.createElement('div');
+    box.className='seq-actorbox'; box.style.left=a.x+'px'; box.style.top='18px';
+    box.setAttribute('data-entity',a.id);
+    box.innerHTML='<div class="an">'+a.label+'</div><div class="ar">'+a.sub+'</div>';
+    var col=CLUSTER_COLOR[(ENTITIES[a.id]||{}).cluster]||'#4554d6';
+    box.style.borderTopColor=col; box.style.borderTopWidth='3px';
+    holder.appendChild(box);
+  });
+  SEQ_MSGS.forEach(function(m){
+    var x1=actorX(m[0]), x2=actorX(m[1]), y=m[4], kind=m[5];
+    var cls=kind==='ret'?'ret':kind==='self'?'self':'';
+    var mk=kind==='ret'?'url(#seqarrow-ret)':kind==='self'?'url(#seqarrow-self)':'url(#seqarrow)';
+    var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var d;
+    if(kind==='self'){ d='M '+x1+' '+y+' h 46 v 26 h -46'; }
+    else { d='M '+x1+' '+y+' L '+x2+' '+y; }
+    path.setAttribute('d',d); path.setAttribute('class','seq-arrow '+cls);
+    path.setAttribute('marker-end',mk);
+    svg.appendChild(path);
+    var numt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    numt.setAttribute('x',(kind==='self'? x1+10 : Math.min(x1,x2)+8));
+    numt.setAttribute('y',y-6); numt.setAttribute('class','seq-msgnum');
+    numt.textContent=m[2];
+    svg.appendChild(numt);
+    var lx=kind==='self'? x1+54 : (x1+x2)/2;
+    var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lt.setAttribute('x',lx); lt.setAttribute('y', kind==='self'? y+18 : y-6);
+    lt.setAttribute('text-anchor', kind==='self'?'start':'middle');
+    lt.setAttribute('class','seq-msglabel'); lt.textContent=m[3];
+    svg.appendChild(lt);
+    var target = kind==='ret'? m[0] : m[1];
+    if(kind==='self') target=m[0];
+    var step=document.createElement('div');
+    step.className='seq-step'; step.setAttribute('data-entity',target);
+    var hx=Math.min(x1,x2), hw=Math.abs(x2-x1)||60;
+    step.style.left=(hx-4)+'px'; step.style.top=(y-14)+'px';
+    step.style.width=(hw+8)+'px'; step.style.height=(kind==='self'?40:22)+'px';
+    step.title='步驟 '+m[2]+'：'+m[3];
+    holder.appendChild(step);
+  });
+}
+
+/* ============================================================
+   DETAIL PANEL
+   ============================================================ */
+var scrim=document.getElementById('scrim');
+var panel=document.getElementById('panel');
+var pbody=document.getElementById('pbody');
+var KIND_LABEL={owns:'持有（owns）',calls:'呼叫（calls）',rw:'讀寫（reads-writes）',isa:'繼承（is-a）'};
+var KIND_CLASS={owns:'r-owns',calls:'r-calls',rw:'r-rw',isa:'r-isa'};
+
+function openPanel(id){
+  var e=ENTITIES[id]; if(!e)return;
+  document.getElementById('pname').textContent=e.name;
+  document.getElementById('pstereo').textContent=e.stereo;
+  var col=CLUSTER_COLOR[e.cluster]||'#4554d6';
+  document.getElementById('pmark').style.background=col;
+  var html='';
+  html+='<p class="role-line">'+e.role+'</p>';
+  html+='<h4>它是什麼 / 做什麼</h4><p>'+e.summary+'</p>';
+  html+='<h4>關鍵方法 / 欄位</h4><ul class="keymethods">';
+  e.methods.forEach(function(m){
+    html+='<li><span class="mono">'+m[0]+'</span>';
+    if(m[1] && m[1]!=='—'){html+=' '+refChip(m[1]);}
+    html+='</li>';
+  });
+  html+='</ul>';
+  html+='<h4>跟鄰居的關係</h4><ul class="rels">';
+  e.rels.forEach(function(r){
+    html+='<li class="'+(KIND_CLASS[r[0]]||'')+'"><span class="relverb">'+(KIND_LABEL[r[0]]||r[0])+'</span>：'+r[2]+'</li>';
+  });
+  html+='</ul>';
+  if(e.gotcha){
+    html+='<h4>限制 / 容易誤解的地方</h4><div class="gotcha"><p>'+e.gotcha+'</p></div>';
+  }
+  if(e.page){
+    html+='<div style="margin-top:18px"><a class="panel-detaillink" href="'+e.page+'">細節頁：'+e.page+' →</a></div>';
+  } else {
+    html+='<div style="margin-top:18px"><span class="panel-detaillink none">（無對應細節頁）</span></div>';
+  }
+  pbody.innerHTML=html;
+  pbody.scrollTop=0;
+  panel.classList.add('open'); scrim.classList.add('open');
+  panel.setAttribute('aria-hidden','false');
+  document.querySelectorAll('.entity.sel,.seq-actorbox.sel,.seq-step.sel').forEach(function(n){n.classList.remove('sel');});
+  document.querySelectorAll('[data-entity="'+id+'"]').forEach(function(n){n.classList.add('sel');});
+  focusEntity(id);
+}
+function closePanel(){
+  panel.classList.remove('open'); scrim.classList.remove('open');
+  panel.setAttribute('aria-hidden','true');
+  document.querySelectorAll('.sel').forEach(function(n){n.classList.remove('sel');});
+  clearFocus();
+}
+document.getElementById('pclose').addEventListener('click',closePanel);
+scrim.addEventListener('click',closePanel);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePanel();});
+
+/* ============================================================
+   INTERACTIONS — collapse toggle, detail open, hover focus
+   ============================================================ */
+document.addEventListener('click',function(ev){
+  // whole entity card carries data-detail → open the drawer (v4)
+  var det=ev.target.closest('[data-detail]');
+  if(det){ openPanel(det.getAttribute('data-detail')); ev.stopPropagation(); return; }
+  // sequence actor boxes / steps still open the drawer
+  var seqt=ev.target.closest('.seq-actorbox,.seq-step');
+  if(seqt){ openPanel(seqt.getAttribute('data-entity')); return; }
+});
+
+/* keyboard: Enter / Space on a focused card opens the drawer (v4) */
+document.addEventListener('keydown',function(ev){
+  if(ev.key!=='Enter' && ev.key!==' ') return;
+  var card=ev.target.closest && ev.target.closest('.entity[data-detail]');
+  if(card){ ev.preventDefault(); openPanel(card.getAttribute('data-detail')); }
+});
+
+/* hover an entity → focus its edges (v3 fix #4) */
+document.addEventListener('mouseover',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){ focusEntity(card.getAttribute('data-entity')); }
+});
+document.addEventListener('mouseout',function(ev){
+  var card=ev.target.closest('.entity');
+  if(card && !panel.classList.contains('open')){
+    var to=ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('.entity');
+    if(!to) clearFocus();
+  }
+});
+
+/* ============================================================
+   TABS + responsive scaling
+   ============================================================ */
+var tabs=document.querySelectorAll('.tab');
+tabs.forEach(function(tb){
+  tb.addEventListener('click',function(){
+    tabs.forEach(function(x){x.classList.remove('active'); x.setAttribute('aria-selected','false');});
+    tb.classList.add('active'); tb.setAttribute('aria-selected','true');
+    var v=tb.getAttribute('data-view');
+    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+    document.getElementById('view-'+v).classList.add('active');
+    if(v==='v1'){ requestAnimationFrame(function(){buildEdges(); fitCanvas();}); }
+  });
+});
+
+/* big whiteboard: no shrink-to-fit. The .canvas wrapper scrolls (overflow:auto)
+   in both directions; the page itself stays put. canvas-inner keeps its full
+   design size so edges always hit the right box ports. */
+function fitCanvas(){
+  var inner=document.getElementById('canvas1');
+  if(!inner)return;
+  inner.style.transform='none';
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+buildConcepts();
+hydrateRefs(document);   // hydrate static refs in the caveat note
+buildEntities();
+buildEdges();
+buildSequence();
+fitCanvas();
+</script>
+
+</body>
+</html>
